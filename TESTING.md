@@ -4,7 +4,7 @@
 
 The source for this release matches the Auto Brightness version 7 installed on the maintainer's Framework laptop. The packaging uses the name Lux Capacitor while retaining the extension UUID and runtime behavior.
 
-Ubuntu 26.04.1 with GNOME Shell 50 is the current development system. Fedora Workstation 44 installation and the following behaviors were confirmed by the maintainer on 2026-10-11:
+The current development system is a Framework Laptop 13 (AMD Ryzen AI 300 Series) running Ubuntu 26.04.1 with GNOME Shell 50. Other Framework models have not been individually validated. Fedora Workstation 44 installation and the following behaviors were confirmed by the maintainer on 2026-10-11:
 
 - Screen brightness responds to covering and uncovering the light sensor.
 - Keyboard automatic and manual brightness controls work.

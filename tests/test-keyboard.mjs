@@ -191,6 +191,33 @@ test('Retained Quick Settings UI displays restored-controller percentages withou
     assert(displayed[0][0] === '50%' && displayed[0][1] === 0.5, 'numeric popup was lost');
 });
 
+test('Native automatic brightness stays off during extension control and restores its previous state', () => {
+    for (const initiallyEnabled of [false, true]) {
+        const values = {'native-override-active': false, 'native-ambient-was-enabled': false};
+        let native = initiallyEnabled;
+        let changed;
+        const e = new Extension();
+        e._settings = {
+            get_boolean(key) { return values[key]; },
+            set_boolean(key, value) { values[key] = value; },
+        };
+        e._powerSettings = {
+            get_boolean() { return native; },
+            set_boolean(_key, value) { native = value; },
+            connect(_signal, callback) { changed = callback; return 1; },
+        };
+        e._manager = {_inhibitUpdates: false, globalScale: {value: 0.4}, _sync() {}};
+        e._getActualBrightness = () => 0.4;
+        e._takeOverNativeAmbient();
+        assert(!native && values['native-override-active'], 'Native Auto was not disabled');
+        native = true;
+        changed();
+        assert(!native, 'Native Auto competed with the extension');
+        e._restoreNativeAmbient();
+        assert(native === initiallyEnabled && !values['native-override-active'], 'Previous native setting was not restored');
+    }
+});
+
 for (const name of ['extension.js', 'keyboardController.js', 'brightnessModel.js']) {
     const [ok, bytes] = Gio.File.new_for_path(`adaptive-brightness-v2@codex.local/${name}`).load_contents(null);
     assert(ok, `unable to read ${name}`);

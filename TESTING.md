@@ -16,7 +16,11 @@ My Fedora checks were on the existing version 7 installation. I haven't done a c
 
 `bash tests/run.sh` compiles the schema in a temporary directory, validates JavaScript syntax, checks the brightness policy, and runs keyboard regressions against mocks. These cover preset remapping, duplicate firmware signals, manual takeover, sensor response, idle dimming, stale hardware reads, and numeric UI feedback.
 
-The GitHub workflow runs the software checks in Ubuntu 26.04 and Fedora 44 containers. Container checks cannot verify real light sensors, physical hotkeys, or suspend/resume. A workflow definition is not evidence that the jobs have passed; consult the actual GitHub Actions results.
+The GitHub workflow runs the software checks in Ubuntu 26.04 and Fedora 44 containers. Container checks cannot verify real light sensors, physical hotkeys, or suspend/resume. Both container jobs passed in [this GitHub Actions run](https://github.com/iErick17/lux-capacitor/actions/runs/38150099547).
+
+`tests/test-install.py` also checks GNOME-version rejection, fresh installation defaults, and upgrade preservation of settings and backups in an isolated environment. It uses real schemas and settings storage, with package installation, system changes, and live Shell activation mocked. These installer checks passed on both container distributions. I also ran them against the downloaded v0.1.0 installer and verified its published checksums on Ubuntu.
+
+The Quick Settings screenshots in the README show both Auto switches enabled on my Ubuntu installation. They document the interface, not a clean-install or suspend test.
 
 ## Clean-install checklist
 

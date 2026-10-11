@@ -29,6 +29,17 @@ I checked the Fedora hardware behavior myself. The automated Ubuntu and Fedora c
 - Desktop idle dimming preserves keyboard Auto.
 - Resume recovery reinitializes the Framework `i2c-FRMW0005:*` sensor and restarts iio-sensor-proxy. On other hardware the hook only restarts the sensor service.
 
+## Quick Settings controls
+
+These screenshots are from my Framework laptop on Ubuntu. Click the arrow beside the screen brightness slider to show screen Auto Brightness, or the arrow beside the Keyboard tile to show keyboard Auto Brightness and its slider. Each Auto switch works independently.
+
+<p>
+  <img src="screenshots/screen-auto.png" alt="GNOME Quick Settings with screen Auto Brightness enabled" width="360">
+  <img src="screenshots/keyboard-auto.png" alt="GNOME Quick Settings with keyboard Auto Brightness enabled and the keyboard currently at 0 percent" width="360">
+</p>
+
+Keyboard Auto can leave the backlight at 0% when the room is bright enough. The screenshots show the controls; the keyboard percentage reflects the current backlight level.
+
 ## Install
 
 Download `Install-Auto-Brightness.run` from the GitHub release, then run it as your normal desktop user:

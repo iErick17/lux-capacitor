@@ -1,0 +1,28 @@
+name: Ubuntu and Fedora checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  software-checks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: ['ubuntu:26.04', 'fedora:44']
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install test dependencies
+        shell: bash
+        run: |
+          if command -v dnf >/dev/null; then
+            dnf install -y git gjs python3 glib2
+          else
+            apt-get update
+            apt-get install -y git gjs python3 libglib2.0-bin
+          fi
+      - uses: actions/checkout@v4
+      - name: Run regression checks
+        run: bash tests/run.sh
+      - name: Build and verify installer
+        run: |
+          python3 build.py
+          bash dist/Install-Auto-Brightness.run --check

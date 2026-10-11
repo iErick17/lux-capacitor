@@ -1,0 +1,6 @@
+dist/
+SHA256SUMS
+**/gschemas.compiled
+tests/extension-fixture.mjs
+__pycache__/
+

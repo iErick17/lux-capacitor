@@ -1,0 +1,9 @@
+{
+  "brightness": {
+    "enabled": true,
+    "keyboard-auto-enabled": true,
+    "anchors": "[]",
+    "anchor-unit": ""
+  },
+  "volume-step": 5
+}

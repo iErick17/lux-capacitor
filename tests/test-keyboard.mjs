@@ -1,0 +1,199 @@
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
+import {KeyboardController} from '../adaptive-brightness-v2@codex.local/keyboardController.js';
+import Extension, {Main} from './extension-fixture.mjs';
+
+function assert(value, message) {
+    if (!value)
+        throw new Error(message);
+}
+let count = 0;
+function test(name, callback) {
+    callback();
+    print(`PASS: ${name}`);
+    count++;
+}
+function fixture(auto = true, level = 0) {
+    const settings = {
+        value: auto,
+        get_boolean() { return this.value; },
+        set_boolean(_key, value) { this.value = value; },
+    };
+    const writes = [];
+    const popups = [];
+    const c = new KeyboardController({settings, onManualChanged: value => popups.push(value)});
+    Object.assign(c, {_enabled: true, _available: true, _lastActual: level,
+        _currentLevel: level, _smoothLevel: level});
+    c._startRamp = () => {};
+    c._stopRamp = () => {};
+    c._requestWrite = value => {
+        writes.push(value);
+        c._lastRequested = value;
+        c._ownWrites.push({level: value, expires: GLib.get_monotonic_time() + 2_000_000});
+    };
+    return {c, settings, writes, popups};
+}
+function acknowledge(c, level) {
+    c._onProxySignal('BrightnessChanged', new GLib.Variant('(is)', [level, 'set property']));
+}
+
+test('Five spaced hardware changes request the restored 20, 50, 75, 100, 0 presets', () => {
+    const {c, settings, writes, popups} = fixture();
+    // Representative native changes from the corresponding manual settings.
+    // This verifies remapping, not firmware Auto removal or physical timing.
+    const hardware = [20, 75, 0, 100, 5];
+    const expected = [20, 50, 75, 100, 0];
+    for (let i = 0; i < expected.length; i++) {
+        c._settleUntil = 0;
+        c._ownWrites = [];
+        c._onActualLevel(hardware[i]);
+        assert(writes.at(-1) === expected[i], `wrong preset at step ${i}`);
+        assert(popups.length === i, 'popup shown before the selected value was confirmed');
+        acknowledge(c, expected[i]);
+        assert(c.currentLevel === expected[i] && popups.at(-1) === expected[i], 'feedback mismatch');
+    }
+    assert(!settings.value && writes.join() === expected.join(), 'manual sequence changed Auto incorrectly');
+});
+
+test('A forwarded firmware signal does not advance the cycle twice', () => {
+    const {c, writes} = fixture(false, 20);
+    c._onActualLevel(75);
+    c._onProxySignal('BrightnessChanged', new GLib.Variant('(is)', [75, 'internal']));
+    assert(writes.join() === '50', 'one hardware event advanced multiple times');
+});
+
+test('Manual slider selection turns software Auto off and writes the selected value', () => {
+    const {c, settings, writes, popups} = fixture(true, 20);
+    c.setManualLevel(43);
+    acknowledge(c, 43);
+    assert(!settings.value && c.currentLevel === 43 && writes.join() === '43', 'manual override failed');
+    assert(popups.length === 0, 'slider unexpectedly emitted a hardware-key popup');
+});
+
+test('Software Auto follows the existing sensor curve and stops responding when disabled', () => {
+    const {c, settings, writes} = fixture(false, 20);
+    c.setAutoEnabled(true);
+    c.onSensorLevel(0);
+    assert(settings.value && c._target === 55, 'dark-room Auto target changed');
+    c.onSensorLevel(78);
+    assert(settings.value && c._target === 0, 'bright-room Auto target changed');
+    c.setAutoEnabled(false);
+    c.onSensorLevel(0);
+    assert(!settings.value && c._target === null && writes.length === 0, 'disabled Auto responded to sensor');
+});
+
+test('Desktop idle dimming and restoration preserve Auto without a manual remap', () => {
+    const {c, settings, writes} = fixture(true, 36);
+    let dimming = true;
+    c._isDimming = () => dimming;
+    c.onSensorLevel(6);
+    c._onPowerSignal(30, 'external');
+    c._onActualLevel(30);
+    assert(settings.value && c.currentLevel === 30 && writes.length === 0,
+        'desktop dimming was mistaken for a manual brightness key');
+    c.onSensorLevel(0);
+    assert(c._rampTick() === GLib.SOURCE_REMOVE && writes.length === 0,
+        'Auto fought desktop dimming');
+    dimming = false;
+    let ramps = 0;
+    c._startRamp = () => ramps++;
+    c._onPowerSignal(36, 'external');
+    c._onActualLevel(36);
+    assert(settings.value && c.currentLevel === 36 && ramps > 0 && writes.length === 0,
+        'restoration did not resume Auto cleanly');
+});
+
+test('Fn+Space still takes manual control while the desktop is dimmed', () => {
+    const {c, settings, writes} = fixture(true, 36);
+    c._isDimming = () => true;
+    c._onPowerSignal(30, 'external');
+    c._onActualLevel(75);
+    assert(!settings.value && writes.join() === '50',
+        'idle handling swallowed a real hardware brightness change');
+});
+
+test('Power notifications preserve manual mode and ignore own writes and hardware signals', () => {
+    const {c, settings, writes} = fixture(false, 50);
+    c._ownWrites.push({level: 75, expires: GLib.get_monotonic_time() + 2_000_000});
+    c._onPowerSignal(75, 'external');
+    c._onPowerSignal(20, 'internal');
+    assert(c.currentLevel === 50, 'own or hardware event was treated as desktop dimming');
+    c._onPowerSignal(30, 'external');
+    c._onActualLevel(30);
+    assert(!settings.value && c.currentLevel === 30 && writes.length === 0,
+        'desktop notification enabled Auto or remapped brightness in manual mode');
+});
+
+test('Numeric keyboard popup is emitted once for a confirmed preset', () => {
+    const {c, popups} = fixture(false, 20);
+    c._onActualLevel(75);
+    acknowledge(c, 50);
+    c._onActualLevel(50);
+    assert(popups.join() === '50', 'duplicate or incorrect popup');
+});
+
+test('A stale hardware read cannot overwrite a newer desktop brightness notification', () => {
+    for (const ownWrite of [false, true]) {
+        const {c, settings, writes} = fixture(true, 36);
+        let completeRead;
+        c._file = {
+            load_contents_async(_cancel, callback) {
+                completeRead = () => callback(this, {});
+            },
+            load_contents_finish() {
+                return [true, new TextEncoder().encode('36')];
+            },
+        };
+        c._pollActual();
+        if (ownWrite)
+            c._ownWrites.push({level: 30, expires: GLib.get_monotonic_time() + 2_000_000});
+        c._onPowerSignal(30, 'external');
+        if (ownWrite)
+            acknowledge(c, 30);
+        completeRead();
+        assert(settings.value && c.currentLevel === 30 && writes.length === 0,
+            `stale read disabled Auto (${ownWrite ? 'own fade' : 'desktop dim'})`);
+        assert(!c._pollPending, 'discarded sample stopped future polling');
+        c._file.load_contents_finish = () => [true, new TextEncoder().encode('75')];
+        c._pollActual();
+        completeRead();
+        assert(!settings.value && writes.join() === '50',
+            'a fresh manual change after the discarded sample was ignored');
+    }
+});
+
+test('Retained Quick Settings UI displays restored-controller percentages without writing back', () => {
+    const Control = GObject.registerClass({Properties: {
+        value: GObject.ParamSpec.int('value', null, null, GObject.ParamFlags.READWRITE, 0, 100, 0),
+    }}, class Control extends GObject.Object {
+        _init() { super._init(); this._value = 0; }
+        get value() { return this._value; }
+        set value(v) { this._value = v; this.notify('value'); }
+    });
+    const slider = new Control();
+    const discrete = new Control();
+    let feedbackWrites = 0;
+    const item = {_sliderItem: slider, _discreteItem: discrete,
+        _sliderItemChangedId: slider.connect('notify::value', () => feedbackWrites++),
+        _discreteItemChangedId: discrete.connect('notify::value', () => feedbackWrites++)};
+    const e = new Extension();
+    const {c} = fixture(false, 50);
+    Object.assign(e, {_keyboard: c, _keyboardQuickItem: item, _keyboardAutoMenuItem: {}});
+    e._syncKeyboardToggle();
+    assert(item.subtitle === '50%' && slider.value === 50 && item.checked,
+        'retained UI disagrees with the restored controller');
+    assert(e._keyboardAutoMenuItem.state === false && feedbackWrites === 0,
+        'display update changed brightness or Auto');
+    const displayed = [];
+    Main.osdWindowManager = {showAll(_icon, label, level) { displayed.push([label, level]); }};
+    e._showKeyboardOSD(50);
+    assert(displayed[0][0] === '50%' && displayed[0][1] === 0.5, 'numeric popup was lost');
+});
+
+for (const name of ['extension.js', 'keyboardController.js', 'brightnessModel.js']) {
+    const [ok, bytes] = Gio.File.new_for_path(`adaptive-brightness-v2@codex.local/${name}`).load_contents(null);
+    assert(ok, `unable to read ${name}`);
+    Reflect.parse(new TextDecoder().decode(bytes), {target: 'module'});
+}
+print(`${count} regression checks passed; all extension modules parse.`);

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.adaptive-brightness" path="/org/gnome/shell/extensions/adaptive-brightness/">
+    <key name="enabled" type="b">
+      <default>true</default>
+      <summary>Use ambient light to adjust screen brightness</summary>
+    </key>
+    <key name="keyboard-auto-enabled" type="b">
+      <default>true</default>
+      <summary>Use ambient light to adjust keyboard backlight brightness</summary>
+    </key>
+    <key name="anchors" type="s">
+      <default>'[]'</default>
+      <summary>Temporary manual brightness preferences at observed light levels</summary>
+    </key>
+    <key name="anchor-unit" type="s">
+      <default>''</default>
+      <summary>Sensor unit used by the stored preferences</summary>
+    </key>
+    <key name="native-override-active" type="b">
+      <default>false</default>
+      <summary>Whether GNOME ambient brightness was overridden</summary>
+    </key>
+    <key name="native-ambient-was-enabled" type="b">
+      <default>true</default>
+      <summary>Previous GNOME ambient brightness state</summary>
+    </key>
+  </schema>
+</schemalist>

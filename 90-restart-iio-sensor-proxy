@@ -1,0 +1,29 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Reinitialize Framework's ambient-light device, then reopen the sensor service.
+[ "${1:-}" = post ] || exit 0
+set -eu
+
+driver=/sys/bus/i2c/drivers/i2c_hid_acpi
+device=
+recover() {
+    result=$?
+    # If reset failed halfway, make one attempt to restore the device binding.
+    if [ -n "$device" ] && [ ! -e "$driver/$device" ]; then
+        printf '%s' "$device" > "$driver/bind" || result=1
+    fi
+    # User sessions are still frozen inside system-sleep hooks.
+    /usr/bin/systemctl --no-block restart iio-sensor-proxy.service || result=1
+    exit "$result"
+}
+
+/usr/bin/systemctl stop iio-sensor-proxy.service
+trap recover EXIT
+for path in "$driver"/i2c-FRMW0005:*; do
+    [ -e "$path" ] || continue
+    device=${path##*/}
+    printf '%s' "$device" > "$driver/unbind"
+    printf '%s' "$device" > "$driver/bind"
+    echo "Reinitialized ambient-light sensor $device"
+    device=
+done

@@ -14,10 +14,10 @@ jobs:
         shell: bash
         run: |
           if command -v dnf >/dev/null; then
-            dnf install -y git gjs python3 glib2
+            dnf install -y git gjs python3 python3-gobject glib2 dconf dbus-daemon util-linux gnome-shell gnome-settings-daemon
           else
             apt-get update
-            apt-get install -y git gjs python3 libglib2.0-bin
+            apt-get install -y git gjs python3 python3-gi libglib2.0-bin dconf-cli dbus-daemon util-linux gnome-shell-common gnome-settings-daemon-common
           fi
       - uses: actions/checkout@v4
       - name: Run regression checks
@@ -26,3 +26,5 @@ jobs:
         run: |
           python3 build.py
           bash dist/Install-Auto-Brightness.run --check
+      - name: Fresh-install and upgrade checks in isolated settings
+        run: runuser -u nobody -- python3 tests/test-install.py "$PWD/dist/Install-Auto-Brightness.run"

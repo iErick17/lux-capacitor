@@ -2,15 +2,15 @@
 
 ## Hardware reports
 
-The source for this release matches the Auto Brightness version 7 installed on the maintainer's Framework laptop. The packaging uses the name Lux Capacitor while retaining the extension UUID and runtime behavior.
+This release uses the same Auto Brightness version 7 code I installed on my Framework laptop. I renamed the project Lux Capacitor but kept the extension UUID and brightness behavior the same.
 
-The current development system is a Framework Laptop 13 (AMD Ryzen AI 300 Series) running Ubuntu 26.04.1 with GNOME Shell 50. Other Framework models have not been individually validated. Fedora Workstation 44 installation and the following behaviors were confirmed by the maintainer on 2026-10-11:
+My laptop is a Framework Laptop 13 (AMD Ryzen AI 300 Series), currently running Ubuntu 26.04.1 with GNOME Shell 50. I haven't tested other Framework models. I also installed this on Fedora Workstation 44 and confirmed the following on 2026-10-11:
 
 - Screen brightness responds to covering and uncovering the light sensor.
 - Keyboard automatic and manual brightness controls work.
 - Screen and keyboard behavior continue after suspend/resume.
 
-Fedora reports refer to the existing version 7 installation, not an independently observed installation of the new release archive. A clean install of the release archive on both distributions remains a release checklist item. GNOME Shell 50 is required and checked by the installer; the exact Fedora Shell version was not independently queried.
+My Fedora checks were on the existing version 7 installation. I haven't done a clean installation of the newly packaged release on both distributions yet. The installer requires and checks GNOME Shell 50; I haven't recorded the exact Shell version from that Fedora session.
 
 ## Automated checks
 
@@ -20,7 +20,7 @@ The GitHub workflow runs the software checks in Ubuntu 26.04 and Fedora 44 conta
 
 ## Clean-install checklist
 
-Run this on each supported distribution before calling a new release independently hardware-validated:
+This is the checklist I use for a clean-install hardware test on each supported distribution:
 
 1. Record `cat /etc/os-release`, `gnome-shell --version`, and the laptop model.
 2. Verify the installer with `bash Install-Auto-Brightness.run --check`.

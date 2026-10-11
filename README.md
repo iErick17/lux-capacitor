@@ -2,7 +2,7 @@
 
 **Automatic screen and keyboard brightness for Framework laptops running Ubuntu or Fedora with GNOME Shell 50.** Great lux, no flux.
 
-Developed and hardware-tested on the **Framework Laptop 13 (AMD Ryzen AI 300 Series)**. Framework-specific keyboard controls and ambient-light sensor recovery are core features. Other Framework models have not been individually validated; this is a community project, not an official Framework product.
+I built this for my **Framework Laptop 13 (AMD Ryzen AI 300 Series)** and tested it on Ubuntu and Fedora. It handles the Framework keyboard backlight and gets the ambient-light sensor working again after suspend. I haven't tested other Framework models yet. This is my community project, not an official Framework product.
 
 Lux Capacitor adjusts brightness to ambient light, adds separate screen and keyboard Auto controls to Quick Settings, and restores sensor readings after suspend on supported Framework laptops. This is a GNOME Shell extension with an optional system resume hook, not a standalone application for every Linux desktop.
 
@@ -12,13 +12,13 @@ Lux Capacitor adjusts brightness to ambient light, adds separate screen and keyb
 
 | System | Validation |
 | --- | --- |
-| Framework Laptop 13 (AMD Ryzen AI 300 Series), Ubuntu 26.04.1, GNOME Shell 50 | Installed and used on the development machine; automated regression checks run locally. |
-| Framework laptop, Fedora Workstation 44 | Maintainer reports successful installation, screen and keyboard controls, and suspend/resume recovery. |
-| Other Framework models | Not individually hardware-tested; require compatible light-sensor and keyboard-backlight interfaces. |
+| Framework Laptop 13 (AMD Ryzen AI 300 Series), Ubuntu 26.04.1, GNOME Shell 50 | I use it on my laptop. The automated regression checks also pass. |
+| Framework laptop, Fedora Workstation 44 | I installed it and confirmed screen brightness, keyboard controls, and recovery after suspend. |
+| Other Framework models | I haven't tested these yet. They need compatible light-sensor and keyboard-backlight interfaces. |
 | Other GNOME versions or KDE, Xfce, Cinnamon | Not supported by this release. |
 | Other laptops with GNOME 50 | Not hardware-tested. Screen control needs an ambient-light sensor supported by iio-sensor-proxy. Keyboard behavior targets Framework's `chromeos::kbd_backlight` interface. |
 
-Fedora hardware validation is maintainer-reported, not an independent automated hardware test. See [TESTING.md](TESTING.md) for the release checklist and reproducible software checks.
+I checked the Fedora hardware behavior myself. The automated Ubuntu and Fedora checks test the software, not the physical sensor or suspend. See [TESTING.md](TESTING.md) for what I've checked and what still needs testing.
 
 ## Features
 

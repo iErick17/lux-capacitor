@@ -18,7 +18,7 @@ Lux Capacitor adjusts brightness to ambient light, adds separate screen and keyb
 | Other GNOME versions or KDE, Xfce, Cinnamon | Not supported by this release. |
 | Other laptops with GNOME 50 | Not hardware-tested. Screen control needs an ambient-light sensor supported by iio-sensor-proxy. Keyboard behavior targets Framework's `chromeos::kbd_backlight` interface. |
 
-I checked the Fedora hardware behavior myself. The automated Ubuntu and Fedora checks test the software, not the physical sensor or suspend. See [TESTING.md](TESTING.md) for what I've checked and what still needs testing.
+I installed this repeatedly on the same Framework laptop while switching between Ubuntu and Fedora, and checked the hardware behavior myself. The automated Ubuntu and Fedora checks test the software, not the physical sensor or suspend. See [TESTING.md](TESTING.md) for what I've checked and what still needs testing.
 
 ## Features
 

@@ -10,7 +10,7 @@ My laptop is a Framework Laptop 13 (AMD Ryzen AI 300 Series), currently running 
 - Keyboard automatic and manual brightness controls work.
 - Screen and keyboard behavior continue after suspend/resume.
 
-My Fedora checks were on the existing version 7 installation. I haven't done a clean installation of the newly packaged release on both distributions yet. The installer requires and checks GNOME Shell 50; I haven't recorded the exact Shell version from that Fedora session.
+I've installed this same version 7 code multiple times on this Framework laptop while switching between Ubuntu and Fedora. Those repeated installations and hardware checks, together with the automated installer checks below, are the basis for the stable v0.1.0 release. The installer requires and checks GNOME Shell 50; I haven't recorded the exact Shell version from that Fedora session.
 
 ## Automated checks
 

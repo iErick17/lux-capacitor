@@ -611,12 +611,23 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._originalShowOsdWindow = manager._showOsdWindow;
         this._originalShowOsdWindowOwn = Object.hasOwn(manager, '_showOsdWindow');
         this._speakerOsdWrapper = (monitorIndex, icon, label, level, maxLevel) => {
-            const isSpeaker = icon?.get_names?.()?.some(name =>
-                /^audio-volume-(muted|low|medium|high|overamplified)(-symbolic)?$/.test(name)) ?? false;
+            const names = icon?.get_names?.() ?? [];
+            const isSpeaker = names.some(name =>
+                /^audio-volume-(muted|low|medium|high|overamplified)(-symbolic)?$/.test(name));
             const shownLabel = isSpeaker && Number.isFinite(level)
                 ? String(Math.round(level * 100)) : label;
-            return this._originalShowOsdWindow.call(manager,
+            const result = this._originalShowOsdWindow.call(manager,
                 monitorIndex, icon, shownLabel, level, maxLevel);
+            const isBrightness = names.includes('display-brightness-symbolic');
+            if ((isSpeaker || isBrightness) && Number.isFinite(level)) {
+                // Repeated 100 ms animations lag behind rapid slider reversals.
+                const bar = manager._osdWindows[monitorIndex]?._level;
+                if (bar) {
+                    bar.remove_transition('value');
+                    bar.value = level;
+                }
+            }
+            return result;
         };
         manager._showOsdWindow = this._speakerOsdWrapper;
     }

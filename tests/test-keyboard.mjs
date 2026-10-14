@@ -266,6 +266,58 @@ test('Volume slider shows OSD for user changes, ignores backend sync, and restor
     }
 });
 
+test('Brightness and volume OSD bars follow rapid reversals immediately and restore on disable', () => {
+    for (const ownHandler of [false, true]) {
+        const bars = [0, 1].map(() => ({
+            value: 0, pending: null, removed: 0,
+            remove_transition(name) {
+                assert(name === 'value', 'Popup fade was changed');
+                this.pending = null;
+                this.removed++;
+            },
+        }));
+        const calls = [];
+        const prototype = {
+            _showOsdWindow(monitor, icon, label, level, maxLevel) {
+                calls.push([monitor, label, level, maxLevel]);
+                if (Number.isFinite(level))
+                    bars[monitor].pending = level;
+                return 'original-result';
+            },
+        };
+        const manager = Object.assign(Object.create(prototype), {
+            _osdWindows: bars.map(bar => ({_level: bar})),
+        });
+        if (ownHandler)
+            manager._showOsdWindow = prototype._showOsdWindow;
+        Main.osdWindowManager = manager;
+        const original = manager._showOsdWindow;
+        const e = new Extension();
+        e._patchSpeakerOSD();
+        for (const [monitor, name] of [[0, 'display-brightness-symbolic'], [1, 'audio-volume-high-symbolic']]) {
+            const icon = new Gio.ThemedIcon({name});
+            for (const level of [0.9, 0.1, 1, 0, 0.6]) {
+                assert(manager._showOsdWindow(monitor, icon, 'label', level, 1) === 'original-result',
+                    'Original OSD result was lost');
+                assert(bars[monitor].value === level && bars[monitor].pending === null,
+                    'OSD still trails the current slider level');
+            }
+        }
+        const call = calls.at(-1);
+        assert(call[1] === '60' && call[3] === 1, 'Numeric volume label or range changed');
+        manager._showOsdWindow(1, new Gio.ThemedIcon({name: 'audio-volume-overamplified-symbolic'}), null, 1.25, 1.5);
+        assert(bars[1].value === 1.25 && calls.at(-1)[1] === '125', 'Amplified volume was clamped');
+        const removed = bars[0].removed;
+        manager._showOsdWindow(0, new Gio.ThemedIcon({name: 'microphone-sensitivity-high-symbolic'}), null, 0.4, 1);
+        assert(bars[0].pending === 0.4 && bars[0].removed === removed, 'Unrelated OSD animation changed');
+        manager._showOsdWindow(0, null, 'No level', null, 1);
+        assert(bars[0].removed === removed, 'Missing level changed animation');
+        e._restoreSpeakerOSD();
+        assert(manager._showOsdWindow === original && Object.hasOwn(manager, '_showOsdWindow') === ownHandler,
+            'Disable did not restore original OSD behavior');
+    }
+});
+
 for (const name of ['extension.js', 'keyboardController.js', 'brightnessModel.js']) {
     const [ok, bytes] = Gio.File.new_for_path(`adaptive-brightness-v2@codex.local/${name}`).load_contents(null);
     assert(ok, `unable to read ${name}`);

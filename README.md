@@ -25,7 +25,7 @@ I installed this repeatedly on the same Framework laptop while switching between
 - Smooth screen brightness changes and learned manual preferences at observed light levels.
 - Separate screen and keyboard Auto controls.
 - Manual keyboard presets: 0%, 20%, 50%, 75%, 100%.
-- Numeric brightness and volume displays; volume keys use steps of 5.
+- Numeric brightness and volume displays, including volume OSD feedback when moving the Quick Settings slider; volume keys use steps of 5.
 - Desktop idle dimming preserves keyboard Auto.
 - Resume recovery reinitializes the Framework `i2c-FRMW0005:*` sensor and restarts iio-sensor-proxy. On other hardware the hook only restarts the sensor service.
 

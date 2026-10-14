@@ -218,6 +218,53 @@ test('Native automatic brightness stays off during extension control and restore
     }
 });
 
+test('Volume slider shows OSD for user changes, ignores backend sync, and restores its handler', () => {
+    const Control = GObject.registerClass({
+        Properties: {value: GObject.ParamSpec.double('value', 'value', 'value',
+            GObject.ParamFlags.READWRITE, 0, 1.5, 0)},
+    }, class VolumeSliderControl extends GObject.Object {});
+    for (const ownHandler of [false, true]) {
+        const slider = new Control();
+        let writes = 0;
+        const shown = [];
+        const prototype = {
+            _sliderChanged() { writes++; },
+            showOSD() { shown.push(this.slider.value); },
+        };
+        const item = Object.assign(Object.create(prototype), {slider, stream: {}});
+        if (ownHandler)
+            item._sliderChanged = prototype._sliderChanged;
+        const original = item._sliderChanged;
+        const changedId = slider.connect('notify::value', () => item._sliderChanged());
+        const e = new Extension();
+        e._patchSpeakerSlider(item);
+        slider.value = 0.5;
+        slider.value = 1.25;
+        assert(writes === 2 && shown.join(',') === '0.5,1.25', 'User changes lost volume writes or OSD');
+        slider.block_signal_handler(changedId);
+        slider.value = 0.2;
+        slider.unblock_signal_handler(changedId);
+        assert(writes === 2 && shown.length === 2, 'Backend sync triggered feedback');
+        item.stream = null;
+        slider.value = 0.3;
+        assert(shown.length === 2, 'Missing output stream triggered OSD');
+        item.stream = {};
+        e._restoreSpeakerSlider();
+        assert(item._sliderChanged === original && Object.hasOwn(item, '_sliderChanged') === ownHandler,
+            'Disable did not restore the original handler');
+        slider.value = 0.4;
+        assert(writes === 4 && shown.length === 2, 'OSD patch survived disable');
+        e._patchSpeakerSlider(item);
+        slider.value = 0.6;
+        assert(shown.length === 3, 'Re-enable duplicated or lost feedback');
+        const otherWrapper = () => {};
+        item._sliderChanged = otherWrapper;
+        e._restoreSpeakerSlider();
+        assert(item._sliderChanged === otherWrapper, 'Disable overwrote another extension');
+        slider.disconnect(changedId);
+    }
+});
+
 for (const name of ['extension.js', 'keyboardController.js', 'brightnessModel.js']) {
     const [ok, bytes] = Gio.File.new_for_path(`adaptive-brightness-v2@codex.local/${name}`).load_contents(null);
     assert(ok, `unable to read ${name}`);

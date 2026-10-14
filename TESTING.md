@@ -2,7 +2,7 @@
 
 ## Hardware reports
 
-This release uses the same Auto Brightness version 7 code I installed on my Framework laptop. I renamed the project Lux Capacitor but kept the extension UUID and brightness behavior the same.
+The v0.1.0 release used the Auto Brightness version 7 code I installed on my Framework laptop. Version 0.1.1 adds volume OSD feedback when moving the Quick Settings slider; screen and keyboard brightness behavior is unchanged.
 
 My laptop is a Framework Laptop 13 (AMD Ryzen AI 300 Series), currently running Ubuntu 26.04.1 with GNOME Shell 50. I haven't tested other Framework models. I also installed this on Fedora Workstation 44 and confirmed the following on 2026-10-11:
 
@@ -14,7 +14,7 @@ I've installed this same version 7 code multiple times on this Framework laptop 
 
 ## Automated checks
 
-`bash tests/run.sh` compiles the schema in a temporary directory, validates JavaScript syntax, checks the brightness policy, and runs keyboard regressions against mocks. These cover preset remapping, duplicate firmware signals, manual takeover, sensor response, idle dimming, stale hardware reads, and numeric UI feedback.
+`bash tests/run.sh` compiles the schema in a temporary directory, validates JavaScript syntax, checks the brightness policy, and runs keyboard regressions against mocks. These cover preset remapping, duplicate firmware signals, manual takeover, sensor response, idle dimming, stale hardware reads, and numeric UI feedback, and volume slider OSD feedback with backend synchronization and disable/re-enable cleanup.
 
 The GitHub workflow runs the software checks in Ubuntu 26.04 and Fedora 44 containers. Container checks cannot verify real light sensors, physical hotkeys, or suspend/resume. Both container jobs passed in [this GitHub Actions run](https://github.com/iErick17/lux-capacitor/actions/runs/38150099547).
 

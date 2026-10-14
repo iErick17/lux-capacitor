@@ -62,6 +62,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._originalShowOsdWindow = null;
         this._originalShowOsdWindowOwn = false;
         this._speakerOsdWrapper = null;
+        this._speakerQuickItem = null;
         this._menuSetupId = 0;
         this._menuAttempts = 0;
         this._screenQuickItem = null;
@@ -117,6 +118,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._keyboard = null;
         this._restoreKeySteps();
         this._restoreBrightnessOSD();
+        this._restoreSpeakerSlider();
         this._restoreSpeakerOSD();
         if (this._sensorRetryId)
             GLib.source_remove(this._sensorRetryId);
@@ -632,6 +634,32 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._originalShowOsdWindow = null;
     }
 
+    _patchSpeakerSlider(item) {
+        this._speakerQuickItem = item;
+        this._originalSpeakerSliderChanged = item._sliderChanged;
+        this._originalSpeakerSliderChangedOwn = Object.hasOwn(item, '_sliderChanged');
+        this._speakerSliderWrapper = (...args) => {
+            this._originalSpeakerSliderChanged.apply(item, args);
+            // GNOME blocks this handler when synchronizing backend volume updates.
+            if (item.stream)
+                item.showOSD();
+        };
+        item._sliderChanged = this._speakerSliderWrapper;
+    }
+
+    _restoreSpeakerSlider() {
+        const item = this._speakerQuickItem;
+        if (item?._sliderChanged === this._speakerSliderWrapper) {
+            if (this._originalSpeakerSliderChangedOwn)
+                item._sliderChanged = this._originalSpeakerSliderChanged;
+            else
+                delete item._sliderChanged;
+        }
+        this._speakerQuickItem = null;
+        this._speakerSliderWrapper = null;
+        this._originalSpeakerSliderChanged = null;
+    }
+
     _scheduleQuickSettingsMenus() {
         if (this._menuSetupId)
             return;
@@ -639,7 +667,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
             ?.quickSettingsItems?.[0];
         if (this._screenQuickItem && this._screenQuickItem !== currentScreen)
             this._removeScreenAutoSwitch();
-        if (this._screenAutoMenuItem && this._keyboardAutoMenuItem)
+        if (this._screenAutoMenuItem && this._keyboardAutoMenuItem && this._speakerQuickItem)
             return;
         this._menuAttempts = 0;
         this._menuSetupId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100,
@@ -647,6 +675,9 @@ export default class AdaptiveBrightnessExtension extends Extension {
                 const quickSettings = Main.panel.statusArea.quickSettings;
                 const screen = quickSettings?._brightness?.quickSettingsItems?.[0];
                 const keyboard = quickSettings?._backlight?.quickSettingsItems?.[0];
+                const speaker = quickSettings?._volumeOutput?.quickSettingsItems?.[0];
+                if (speaker && !this._speakerQuickItem)
+                    this._patchSpeakerSlider(speaker);
 
                 if (this._screenQuickItem && this._screenQuickItem !== screen)
                     this._removeScreenAutoSwitch();
@@ -656,7 +687,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
                     this._addKeyboardAutoSwitch(keyboard);
 
                 this._menuAttempts++;
-                if ((this._screenAutoMenuItem && this._keyboardAutoMenuItem) ||
+                if ((this._screenAutoMenuItem && this._keyboardAutoMenuItem && this._speakerQuickItem) ||
                     this._menuAttempts >= 100) {
                     this._menuSetupId = 0;
                     return GLib.SOURCE_REMOVE;

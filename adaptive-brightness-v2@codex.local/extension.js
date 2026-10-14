@@ -649,7 +649,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
 
     _restoreSpeakerSlider() {
         const item = this._speakerQuickItem;
-        if (item?._sliderChanged === this._speakerSliderWrapper) {
+        if (item && item._sliderChanged === this._speakerSliderWrapper) {
             if (this._originalSpeakerSliderChangedOwn)
                 item._sliderChanged = this._originalSpeakerSliderChanged;
             else

@@ -219,6 +219,7 @@ test('Native automatic brightness stays off during extension control and restore
 });
 
 test('Volume slider shows OSD for user changes, ignores backend sync, and restores its handler', () => {
+    new Extension()._restoreSpeakerSlider();
     const Control = GObject.registerClass({
         Properties: {value: GObject.ParamSpec.double('value', 'value', 'value',
             GObject.ParamFlags.READWRITE, 0, 1.5, 0)},

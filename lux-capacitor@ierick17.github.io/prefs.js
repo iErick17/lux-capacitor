@@ -117,8 +117,11 @@ function curveGraph(settings) {
         cr.setSourceRGBA(fg.red, fg.green, fg.blue, 0.6);
         cr.setFontSize(11);
         for (const lux of [1, 10, 100, 1000]) {
-            cr.moveTo(toX(lux, width) + 4, height - 4);
-            cr.showText(`${lux} lux`);
+            // Keep the last label inside the graph instead of clipping it.
+            const label = `${lux} lux`;
+            const labelWidth = cr.textExtents(label).xAdvance;
+            cr.moveTo(Math.min(toX(lux, width) + 4, width - labelWidth), height - 4);
+            cr.showText(label);
         }
         for (const [label, y] of [['100%', 10], ['0%', height]]) {
             cr.moveTo(-left, y);

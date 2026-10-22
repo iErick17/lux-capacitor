@@ -22,7 +22,10 @@ const KEYBOARD_XML = `
 </node>`;
 const KeyboardProxy = Gio.DBusProxy.makeProxyWrapper(KEYBOARD_XML);
 
-const POLL_MS = 200;
+// Fn+Space is handled by the EC and never reaches the OS as a key event,
+// so its level shows until the next poll replaces it with the preset.
+// Polling often keeps that firmware flash short.
+const POLL_MS = 50;
 const RAMP_MS = 100;
 // The exponential fade crawls near its target, which left the light
 // lingering at a few percent for seconds. Never move slower than this.

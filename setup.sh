@@ -12,8 +12,8 @@ uuid=lux-capacitor@extensions
 # once; settings carry over because the settings schema is unchanged.
 legacy_uuids=(adaptive-brightness-v2@codex.local lux-capacitor@ierick17.github.io)
 shell_version=$(gnome-shell --version)
-if [[ ! "$shell_version" =~ GNOME\ Shell\ 50([.]|$) ]]; then
-    echo "This extension requires GNOME Shell 50; found: $shell_version" >&2
+if [[ ! "$shell_version" =~ GNOME\ Shell\ 5[01]([.]|$) ]]; then
+    echo "This extension requires GNOME Shell 50 or 51; found: $shell_version" >&2
     exit 1
 fi
 glib-compile-schemas --strict "$base/$uuid/schemas"

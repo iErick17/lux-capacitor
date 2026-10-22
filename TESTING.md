@@ -16,9 +16,11 @@ On 2026-10-21 I tested 0.2.0 and 0.2.1 on my Framework Laptop 13 with Fedora Wor
 - With 0.2.1, six full Fn+Space cycles, including presses about 0.3 s apart, each gave exactly one step in order. The 50 ms check was added after this recording.
 - Keyboard Auto lit the keyboard when I covered the light sensor and faded it out when I uncovered it.
 
+Version 0.2.3 adds GNOME Shell 51 (Fedora 45). GNOME 51 refused to load 0.2.2 only because its metadata listed GNOME 50; no code changes were needed. I checked GNOME 51's own code for every internal the extension relies on (the brightness manager, the Quick Settings brightness, keyboard and volume items, the on-screen display, the idle monitor, and the settings window base class) and the system services it uses (iio-sensor-proxy, UPower and settings-daemon keyboard brightness). All are unchanged. GNOME 51 newly remembers manual brightness per monitor across logins, which does not conflict, because the extension sets the brightness itself once it starts. The automated checks also run in a Fedora 45 container, and I ran them locally on Fedora 45 with GJS 1.90 and libadwaita 1.10.
+
 Not yet checked on hardware for 0.2.x: the settings window inside the Extensions app, dimming on battery, the keyboard idle timeout, suspend/resume, and anything on Ubuntu.
 
-My laptop is a Framework Laptop 13 (AMD Ryzen AI 300 Series), currently running Fedora Workstation 44 with GNOME Shell 50.6. I've also used it with Ubuntu 26.04.1 and GNOME Shell 50. I haven't tested other Framework models. On Fedora Workstation 44 I confirmed the following on 2026-10-11:
+My laptop is a Framework Laptop 13 (AMD Ryzen AI 300 Series), currently running Fedora Workstation 45 with GNOME Shell 51.0. I've also used it with Fedora Workstation 44 (GNOME Shell 50.6) and Ubuntu 26.04.1 (GNOME Shell 50). I haven't tested other Framework models. On Fedora Workstation 44 I confirmed the following on 2026-10-11:
 
 - Screen brightness responds to covering and uncovering the light sensor.
 - Keyboard automatic and manual brightness controls work.

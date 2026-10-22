@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        image: ['ubuntu:26.04', 'fedora:44']
+        image: ['ubuntu:26.04', 'fedora:44', 'fedora:45']
     container: ${{ matrix.image }}
     steps:
       - name: Install test dependencies

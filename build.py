@@ -17,7 +17,7 @@ HEADER = '''#!/usr/bin/env bash
 set -euo pipefail
 case "${1:-}" in
     --help|-h)
-        echo 'Auto Brightness: Ubuntu / Fedora with GNOME Shell 50.'
+        echo 'Auto Brightness: Ubuntu / Fedora with GNOME Shell 50 or 51.'
         echo 'Run: bash ./Install-Auto-Brightness.run (normal desktop user, no sudo).'
         echo 'Verify only: bash ./Install-Auto-Brightness.run --check'
         echo 'Includes screen/keyboard Auto, manual presets, percentage displays, and the resume hook.'
@@ -75,7 +75,7 @@ def build():
     OUTPUT.chmod(0o755)
     (ROOT / 'dist/auto-brightness-installer.json').write_text(json.dumps({
         'installer': str(OUTPUT), 'sha256': hashlib.sha256(OUTPUT.read_bytes()).hexdigest(),
-        'bundled_files': hashes, 'platforms': ['Ubuntu 26.04 / GNOME 50', 'Fedora 44 / GNOME 50'],
+        'bundled_files': hashes, 'platforms': ['Ubuntu 26.04 / GNOME 50', 'Fedora 44 / GNOME 50', 'Fedora 45 / GNOME 51'],
         'verified_on_real_ubuntu': False,
     }, indent=2) + '\n')
     extension_zip = OUTPUT.parent / f'{UUID}.shell-extension.zip'

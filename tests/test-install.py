@@ -67,10 +67,11 @@ media = Gio.Settings.new('org.gnome.settings-daemon.plugins.media-keys')
                            env=env, text=True, capture_output=True, check=True, timeout=20)
         return p.stdout.strip()
 
-    rejected = install('49.0')
-    assert rejected.returncode != 0 and not log.exists(), 'Unsupported GNOME modified the system'
-    assert not (root / 'data').exists(), 'Rejected install created an extension'
-    print('PASS: GNOME 49 is rejected before installation')
+    for unsupported in ('49.0', '52.0'):
+        rejected = install(unsupported)
+        assert rejected.returncode != 0 and not log.exists(), f'GNOME {unsupported} modified the system'
+        assert not (root / 'data').exists(), f'Rejected GNOME {unsupported} install created an extension'
+    print('PASS: GNOME 49 and 52 are rejected before installation')
     fresh = install()
     assert fresh.returncode == 0, fresh.stdout + fresh.stderr
     target = root / 'data/gnome-shell/extensions' / UUID
@@ -113,4 +114,11 @@ media = Gio.Settings.new('org.gnome.settings-daemon.plugins.media-keys')
         backups = list((root / 'state/adaptive-brightness').glob(f'*/legacy-extension-{name}/extension.js'))
         assert any(p.read_text() == f'// {name}\n' for p in backups), f'{name} was not backed up'
     print('PASS: upgrade from both previous extension IDs removes them, keeps settings, and backs them up')
+
+    gnome51 = install('51.0')
+    assert gnome51.returncode == 0, gnome51.stdout + gnome51.stderr
+    assert (target / 'extension.js').read_bytes() == (source / UUID / 'extension.js').read_bytes()
+    state = json.loads(settings("print(json.dumps(brightness.get_string('anchors')))"))
+    assert state == '[{"lux":40,"brightness":0.7}]', 'GNOME 51 install lost settings'
+    print('PASS: GNOME 51 install succeeds and keeps settings')
     print('NOTE: package installation, privileged resume-hook installation, and live GNOME Shell activation were mocked; no physical hardware was tested.')

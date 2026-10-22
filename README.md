@@ -1,6 +1,6 @@
 # Lux Capacitor
 
-**Automatic screen and keyboard brightness for Framework laptops running Ubuntu or Fedora with GNOME Shell 50.** Great lux, no flux.
+**Automatic screen and keyboard brightness for Framework laptops running Ubuntu or Fedora with GNOME Shell 50 or 51.** Great lux, no flux.
 
 I built this for my **Framework Laptop 13 (AMD Ryzen AI 300 Series)** and tested it on Ubuntu and Fedora. It handles the Framework keyboard backlight and gets the ambient-light sensor working again after suspend. I haven't tested other Framework models yet. This is my community project, not an official Framework product.
 
@@ -12,11 +12,12 @@ Lux Capacitor adjusts brightness to ambient light, adds separate screen and keyb
 
 | System | Validation |
 | --- | --- |
+| Framework Laptop 13 (AMD Ryzen AI 300 Series), Fedora Workstation 45, GNOME Shell 51 | v0.2.3: my laptop now runs this. I checked GNOME 51's code for every internal the extension uses, and the automated checks pass on Fedora 45. Hardware testing on GNOME 51 is pending. |
 | Framework Laptop 13 (AMD Ryzen AI 300 Series), Fedora Workstation 44, GNOME Shell 50 | v0.2.1: I recorded keyboard Auto and Fn+Space on my laptop and confirmed them. Earlier versions: screen brightness, keyboard controls, and recovery after suspend. |
 | Framework Laptop 13 (AMD Ryzen AI 300 Series), Ubuntu 26.04.1, GNOME Shell 50 | I used it on my laptop up to v0.1.2. I haven't tested v0.2.x on Ubuntu hardware yet; the automated checks pass. |
 | Other Framework models | I haven't tested these yet. They need compatible light-sensor and keyboard-backlight interfaces. |
-| Other GNOME versions or KDE, Xfce, Cinnamon | Not supported by this release. |
-| Other laptops with GNOME 50 | Not hardware-tested. Screen control needs an ambient-light sensor supported by iio-sensor-proxy. Keyboard behavior targets Framework's `chromeos::kbd_backlight` interface. |
+| GNOME versions other than 50 and 51, or KDE, Xfce, Cinnamon | Not supported by this release. |
+| Other laptops with GNOME 50 or 51 | Not hardware-tested. Screen control needs an ambient-light sensor supported by iio-sensor-proxy. Keyboard behavior targets Framework's `chromeos::kbd_backlight` interface. |
 
 I installed this repeatedly on the same Framework laptop while switching between Ubuntu and Fedora, and checked the hardware behavior myself. The automated Ubuntu and Fedora checks test the software, not the physical sensor or suspend. See [TESTING.md](TESTING.md) for what I've checked and what still needs testing.
 
@@ -85,7 +86,7 @@ bash Install-Auto-Brightness.run --check
 bash Install-Auto-Brightness.run
 ```
 
-The installer checks GNOME Shell 50, installs dependencies using apt on Ubuntu or dnf on Fedora, and requests sudo for the system resume hook. Log out and back in afterward. Both Auto controls start enabled on a fresh installation. Existing brightness settings are preserved; the volume step is set to 5.
+The installer checks for GNOME Shell 50 or 51, installs dependencies using apt on Ubuntu or dnf on Fedora, and requests sudo for the system resume hook. Log out and back in afterward. Both Auto controls start enabled on a fresh installation. Existing brightness settings are preserved; the volume step is set to 5.
 
 From a source checkout, run `bash install.sh` instead.
 

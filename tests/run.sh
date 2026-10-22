@@ -14,7 +14,7 @@ import json
 root = Path('lux-capacitor@extensions')
 metadata = json.loads((root / 'metadata.json').read_text())
 assert metadata['uuid'] == root.name
-assert metadata['shell-version'] == ['50']
+assert metadata['shell-version'] == ['50', '51']
 source = (root / 'extension.js').read_text()
 for original, replacement in {
     "import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';": 'class Extension {}',

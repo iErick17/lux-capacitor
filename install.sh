@@ -11,14 +11,14 @@ source /etc/os-release
 echo 'AUTO BRIGHTNESS — guided installation'
 echo 'Screen and keyboard Auto, manual presets, percentage displays, and wake-up recovery.'
 version=$(gnome-shell --version 2>/dev/null || true)
-if [[ ! "$version" =~ GNOME\ Shell\ 50([.]|$) ]]; then
-    echo "This bundle needs GNOME Shell 50. Found: ${version:-no GNOME Shell}. No changes made."
+if [[ ! "$version" =~ GNOME\ Shell\ 5[01]([.]|$) ]]; then
+    echo "This bundle needs GNOME Shell 50 or 51. Found: ${version:-no GNOME Shell}. No changes made."
     exit 1
 fi
 case "${ID:-}" in
     fedora) ;;
     ubuntu) ;;
-    *) echo 'This installer supports Ubuntu and Fedora with GNOME 50.'; exit 1 ;;
+    *) echo 'This installer supports Ubuntu and Fedora with GNOME 50 or 51.'; exit 1 ;;
 esac
 command -v sudo >/dev/null || { echo 'Install sudo before running this installer.' >&2; exit 1; }
 echo 'It will install required packages, the extension, and a system wake-up hook.'

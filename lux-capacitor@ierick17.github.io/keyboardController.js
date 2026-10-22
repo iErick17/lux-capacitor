@@ -24,6 +24,9 @@ const KeyboardProxy = Gio.DBusProxy.makeProxyWrapper(KEYBOARD_XML);
 
 const POLL_MS = 200;
 const RAMP_MS = 100;
+// The exponential fade crawls near its target, which left the light
+// lingering at a few percent for seconds. Never move slower than this.
+const MIN_RAMP_PERCENT_PER_SECOND = 5;
 const WRITE_ECHO_US = 2_000_000;
 const HOTKEY_SETTLE_US = 650_000;
 const RESUME_GUARD_US = 12_000_000;
@@ -798,8 +801,12 @@ export class KeyboardController {
         this._lastRampTick = now;
         const current = this._smoothLevel ?? this._lastActual ??
             this._currentLevel ?? 0;
-        const next = advanceBrightness(current / 100,
+        let next = advanceBrightness(current / 100,
             this._target / 100, dt) * 100;
+        const remaining = this._target - current;
+        const minimumStep = MIN_RAMP_PERCENT_PER_SECOND * dt;
+        if (Math.abs(next - current) < minimumStep)
+            next = current + Math.sign(remaining) * Math.min(minimumStep, Math.abs(remaining));
         this._smoothLevel = Math.abs(next - this._target) < 0.3
             ? this._target : next;
 

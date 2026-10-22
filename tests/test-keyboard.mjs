@@ -55,6 +55,20 @@ test('Fn+Space keeps the firmware 20, 75, 100, 0 cycle without overriding it', (
     assert(!settings.value && writes.join() === expected.join(), 'manual sequence changed Auto incorrectly');
 });
 
+test('Keyboard Auto finishes a fade instead of lingering at a few percent', () => {
+    const {c, writes} = fixture(true, 10);
+    c._target = 0;
+    let ticks = 0;
+    // Simulate 100 ms ramp ticks; before the minimum speed, 10% -> 0 took about 7 s.
+    while (c._smoothLevel !== 0 && ticks < 100) {
+        c._lastRampTick = GLib.get_monotonic_time() - 100_000;
+        c._rampTick();
+        ticks++;
+    }
+    assert(c._smoothLevel === 0 && ticks <= 25 && writes.at(-1) === 0,
+        `fade from 10% took ${ticks} ticks`);
+});
+
 test('Quick Fn+Space presses are each kept, with no press lost', () => {
     const {c, settings, writes, popups} = fixture(false, 0);
     // Presses about half a second apart used to fall inside the settle

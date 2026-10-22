@@ -164,22 +164,24 @@ export default class LuxCapacitorPreferences extends ExtensionPreferences {
 
         const screen = new Adw.PreferencesGroup({title: 'Screen'});
         screen.add(comboRow(settings, 'transition-speed', 'Transition speed',
-            'Subtle changes brightness gradually, like a Mac', SPEEDS, getString, setString));
+            'How quickly the screen follows the light', SPEEDS, getString, setString));
         screen.add(comboRow(settings, 'light-sensitivity', 'Light sensitivity',
-            'How much the light must change before brightness moves',
+            'How much the light must change first: Low ≈30%, Normal ≈15%, High ≈7%',
             SENSITIVITIES, getString, setString));
         screen.add(percentRow(settings, 'screen-min-brightness', 'Minimum brightness',
-            'Lowest level Auto chooses by itself, in percent', value => {
+            'Lower limit for Auto\'s default curve, in percent. Your own adjustments still apply',
+            value => {
                 if (value > settings.get_int('screen-max-brightness'))
                     settings.set_int('screen-max-brightness', value);
             }));
         screen.add(percentRow(settings, 'screen-max-brightness', 'Maximum brightness',
-            'Highest level Auto chooses by itself, in percent', value => {
+            'Upper limit for Auto\'s default curve, in percent. Your own adjustments still apply',
+            value => {
                 if (value < settings.get_int('screen-min-brightness'))
                     settings.set_int('screen-min-brightness', value);
             }));
         const battery = new Adw.SwitchRow({title: 'Slightly dim on battery',
-            subtitle: 'Saves power while unplugged'});
+            subtitle: 'Reduces Auto brightness to 85% while unplugged'});
         settings.bind('dim-on-battery', battery, 'active', Gio.SettingsBindFlags.DEFAULT);
         screen.add(battery);
         page.add(screen);
@@ -202,10 +204,11 @@ export default class LuxCapacitorPreferences extends ExtensionPreferences {
             description: 'Fn+Space and the keyboard slider always switch to a manual level ' +
                 'and turn keyboard Auto off.'});
         keyboard.add(comboRow(settings, 'keyboard-idle-timeout', 'Turn off when idle',
-            'Only when Auto turned the light on', IDLE_TIMEOUTS, getInt, setInt));
+            'Only Auto\'s light; comes back on input',
+            IDLE_TIMEOUTS, getInt, setInt));
         const dark = Adw.SpinRow.new_with_range(1, 200, 1);
         Object.assign(dark, {title: 'Dark threshold',
-            subtitle: 'Auto turns the light on below this many lux'});
+            subtitle: 'Auto lights the keyboard below this many lux, and turns it off above 2.5× this'});
         dark.value = settings.get_int('keyboard-dark-lux');
         dark.connect('notify::value', () => {
             const value = Math.round(dark.value);

@@ -46,11 +46,35 @@ Keyboard Auto can leave the backlight at 0% when the room is bright enough. The 
 
 ## Settings
 
-Open Extensions, then Lux Capacitor → Settings, or run `gnome-extensions prefs lux-capacitor@ierick17.github.io`. The graph shows the default curve (dashed) and the curve Auto uses after your adjustments (solid, with each adjustment as a dot); this screenshot uses two example adjustments.
+Open Extensions, then Lux Capacitor → Settings, or run `gnome-extensions prefs lux-capacitor@ierick17.github.io`. This screenshot uses two example adjustments in the graph.
 
 <p>
   <img src="screenshots/settings-window.png" alt="Lux Capacitor settings window with screen options, a learned brightness graph, and keyboard options" width="420">
 </p>
+
+### Screen
+
+| Setting | What it does | Default |
+| --- | --- | --- |
+| Transition speed | How quickly the screen follows a change in light. Brightening is always quicker than dimming. **Normal** settles in about 2 s when brightening and about 7 s when dimming; **Subtle** takes twice as long (about 4 s and 15 s), the closest to a Mac; **Fast** takes half as long (about 1 s and 4 s). Affects the screen only. | Normal |
+| Light sensitivity | How much the light must change before the screen moves, so small sensor fluctuations are ignored: about 30% (**Low**), 15% (**Normal**), or 7% (**High**). Larger changes always react right away. | Normal |
+| Minimum brightness | Lower limit for Auto's default curve, in percent. Brightness you set yourself is still used exactly, even below it. Raising it above the maximum moves the maximum up too. | 0% |
+| Maximum brightness | Upper limit for Auto's default curve, in percent. Brightness you set yourself is still used exactly, even above it. Lowering it below the minimum moves the minimum down too. | 100% |
+| Slightly dim on battery | While unplugged, Auto brightness is reduced to 85%. Brightness you set on battery is learned without that reduction, so plugging in brings back your full level. | Off |
+| Learned brightness graph | Light level in lux across (log scale, 1 to 1000+), brightness up. The dashed line is the default curve within your limits, the solid line is what Auto actually uses, and each dot is one of your adjustments. | — |
+| Reset Learned Screen Brightness | Forgets all your adjustments and returns to the default curve. Turning screen Auto off in Quick Settings does the same. | — |
+
+To teach screen Auto, keep it on and move the brightness slider or press the brightness keys. Auto remembers that level for the current light, keeps following the light, and never makes the screen dimmer as the room gets brighter.
+
+### Keyboard
+
+| Setting | What it does | Default |
+| --- | --- | --- |
+| Turn off when idle | When keyboard Auto has the light on and you stop typing and using the mouse for this long (5 s, 10 s, 30 s, 1 min, or 5 min), the light fades out, and it comes back on your next input. It needs keyboard Auto on and never changes a level you set yourself. | Off |
+| Dark threshold | Keyboard Auto turns the light on when the room is darker than this many lux, and off again once it is 2.5 times brighter (25 lux by default); the gap prevents flickering. The keyboard brightness curve scales with it. | 10 lux |
+| Reset Keyboard Settings | Sets the idle timeout back to Off and the dark threshold back to 10 lux. | — |
+
+Fn+Space steps through 0%, 20%, 50%, 75%, and 100%. Fn+Space and the Quick Settings keyboard slider both set a manual level and turn keyboard Auto off; turn it back on with the Auto switch in Quick Settings. The screen and keyboard Auto switches are independent.
 
 ## Install
 

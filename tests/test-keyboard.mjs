@@ -1,7 +1,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
-import {KeyboardController} from '../adaptive-brightness-v2@codex.local/keyboardController.js';
+import {KeyboardController, automaticKeyboardTarget} from '../adaptive-brightness-v2@codex.local/keyboardController.js';
 import Extension, {Main} from './extension-fixture.mjs';
 
 function assert(value, message) {
@@ -17,8 +17,10 @@ function test(name, callback) {
 function fixture(auto = true, level = 0) {
     const settings = {
         value: auto,
+        ints: {'keyboard-idle-timeout': 0, 'keyboard-dark-lux': 10},
         get_boolean() { return this.value; },
         set_boolean(_key, value) { this.value = value; },
+        get_int(key) { return this.ints[key]; },
     };
     const writes = [];
     const popups = [];
@@ -401,7 +403,108 @@ test('Contradicting preferences stored by earlier versions are cleaned up on loa
     assert(e._anchors.length === 1 && e._anchors[0].lux === 150, 'stored contradiction was kept');
 });
 
-for (const name of ['extension.js', 'keyboardController.js', 'brightnessModel.js']) {
+function idleMonitor() {
+    return {
+        idle: null, active: null, removed: [],
+        add_idle_watch(_ms, callback) { this.idle = callback; return 1; },
+        add_user_active_watch(callback) { this.active = callback; return 2; },
+        remove_watch(id) { this.removed.push(id); },
+    };
+}
+
+test('The default dark threshold keeps the original keyboard policy', () => {
+    for (const lux of [0, 2, 10, 18, 24, 25, 30, 100]) {
+        for (const wasLit of [false, true]) {
+            const expected = wasLit ? lux < 25 : lux <= 10;
+            const {lit} = automaticKeyboardTarget(lux, wasLit);
+            assert(lit === expected, `default threshold changed at ${lux} lux`);
+        }
+    }
+    assert(automaticKeyboardTarget(15, false, 20).lit && !automaticKeyboardTarget(15).lit,
+        'a higher dark threshold did not light the keyboard');
+});
+
+test('Idle timeout fades only Auto light and restores it on activity', () => {
+    const {c, settings, writes} = fixture(true, 55);
+    const monitor = idleMonitor();
+    c._idleMonitor = monitor;
+    settings.ints['keyboard-idle-timeout'] = 30;
+    c._watchIdle();
+    c.onSensorLevel(0);
+    assert(c._target === 55, 'Auto did not light the keyboard');
+    monitor.idle();
+    assert(settings.value && c._target === 0, 'idle did not fade Auto light while keeping Auto on');
+    monitor.active();
+    assert(settings.value && c._target === 55 && writes.length === 0, 'activity did not restore Auto light');
+});
+
+test('Idle timeout never changes a manual keyboard level', () => {
+    const {c, settings, writes} = fixture(false, 50);
+    const monitor = idleMonitor();
+    c._idleMonitor = monitor;
+    settings.ints['keyboard-idle-timeout'] = 5;
+    c._watchIdle();
+    monitor.idle();
+    monitor.active();
+    assert(!settings.value && c._target === null && writes.length === 0, 'idle changed a manual level');
+});
+
+test('Idle fade writes are not mistaken for Fn+Space', () => {
+    const {c, settings, writes, popups} = fixture(true, 55);
+    const monitor = idleMonitor();
+    c._idleMonitor = monitor;
+    settings.ints['keyboard-idle-timeout'] = 30;
+    c._watchIdle();
+    c.onSensorLevel(0);
+    monitor.idle();
+    for (const level of [40, 20, 0]) {
+        c._requestWrite(level);
+        c._onActualLevel(level);
+    }
+    assert(settings.value && writes.join() === '40,20,0' && popups.length === 0,
+        'idle fade advanced a preset or turned Auto off');
+});
+
+test('Fn+Space from an Auto level advances exactly one preset in either detection order', () => {
+    for (const pollFirst of [true, false]) {
+        const {c, settings, writes} = fixture(true, 37);
+        if (pollFirst) {
+            c._onActualLevel(75);
+            c._onProxySignal('BrightnessChanged', new GLib.Variant('(is)', [75, 'internal']));
+        } else {
+            c._onProxySignal('BrightnessChanged', new GLib.Variant('(is)', [75, 'internal']));
+            c._onActualLevel(75);
+        }
+        assert(!settings.value && writes.join() === '50',
+            `one press did not give one preset (${pollFirst ? 'poll' : 'signal'} first)`);
+    }
+});
+
+test('Battery dimming keeps learned preferences undimmed and exact', () => {
+    const {e, targets, sense, drag} = screenFixture();
+    Object.assign(e, {_dimOnBattery: true, _onBattery: true});
+    sense(60);
+    drag(0.51);
+    assert(Math.abs(e._anchors[0].brightness - 0.6) < 1e-9, 'battery dimming was learned as a preference');
+    e._onBattery = false;
+    e._retargetNow();
+    assert(Math.abs(targets.at(-1) - 0.6) < 1e-9, 'preference was not restored on AC power');
+});
+
+test('Resetting learned brightness from the settings window reaches the extension', () => {
+    const {e, values, targets, sense, drag} = screenFixture();
+    sense(60);
+    drag(0.9);
+    values.anchors = '[]';
+    values['anchor-unit'] = '';
+    e._onAnchorsChanged();
+    assert(e._anchors.length === 0 && !e._saveAnchorsId && targets.length === 2,
+        'external reset was ignored or overwritten');
+    e._saveAnchors();
+    assert(e._anchors.length === 0 && values.anchors === '[]', 'own save reloaded preferences');
+});
+
+for (const name of ['extension.js', 'keyboardController.js', 'brightnessModel.js', 'prefs.js']) {
     const [ok, bytes] = Gio.File.new_for_path(`adaptive-brightness-v2@codex.local/${name}`).load_contents(null);
     assert(ok, `unable to read ${name}`);
     Reflect.parse(new TextDecoder().decode(bytes), {target: 'module'});

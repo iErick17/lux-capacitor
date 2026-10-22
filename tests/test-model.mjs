@@ -1,5 +1,5 @@
 import {curve, preferredBrightness, upsertPreference, advanceBrightness, MAX_PREFERENCES,
-    normalizePreferences, significantLuxChange} from '../adaptive-brightness-v2@codex.local/brightnessModel.js';
+    normalizePreferences, significantLuxChange, limitedCurve} from '../adaptive-brightness-v2@codex.local/brightnessModel.js';
 function assert(ok, message) { if (!ok) throw new Error(message); }
 assert(curve(0) === 0.08 && curve(1600) === 1, 'Default curve endpoints changed');
 let previous = 0;
@@ -60,4 +60,17 @@ assert(significantLuxChange(null, 100) && significantLuxChange(100, 130), 'Real 
 assert(!significantLuxChange(100, 105) && !significantLuxChange(0, 0.1), 'Sensor noise changed the target');
 print('PASS: brightness curve, preferences, smoothing, bounds, and invalid readings');
 print('PASS: monotone preferences, newest choice wins, stored cleanup, and lux dead zone');
+for (const lux of [0, 5, 40, 500, 2000])
+    assert(limitedCurve(lux) === curve(lux), 'Default limits changed the curve');
+const limits = {min: 0.2, max: 0.7};
+assert(limitedCurve(0, limits) === 0.2 && limitedCurve(2000, limits) === 0.7, 'Auto limits were ignored');
+const outside = upsertPreference([], 40, 0.05);
+assert(Math.abs(preferredBrightness(40, outside, limits) - 0.05) < 1e-9, 'Limits overrode a manual preference');
+assert(preferredBrightness(2000, [], limits) === 0.7, 'Auto exceeded the maximum');
+const step = speed => advanceBrightness(0.2, 0.8, 0.5, speed);
+assert(step('subtle') < step('normal') && step('normal') < step('fast'), 'Transition speeds are not ordered');
+assert(step(undefined) === step('normal'), 'Default speed changed');
+assert(significantLuxChange(100, 110, 'high') && !significantLuxChange(100, 110, 'normal'), 'High sensitivity ignored a change');
+assert(!significantLuxChange(100, 125, 'low') && significantLuxChange(100, 125, 'normal'), 'Low sensitivity reacted to a small change');
+print('PASS: Auto limits, transition speeds, and light sensitivity');
 

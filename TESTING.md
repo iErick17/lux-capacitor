@@ -6,6 +6,8 @@ The v0.1.0 release used the Auto Brightness version 7 code I installed on my Fra
 
 Version 0.1.3 changes screen Auto only. Learned preferences can no longer make the screen dimmer in brighter light, a newer preference replaces a nearby contradicting one, and contradictions stored by earlier versions are cleaned up on load. Light changes under about 15% no longer re-target the screen, and a slider drag saves its preference once, 500 ms after the drag settles (or immediately when the screen locks). Keyboard behavior is unchanged. I haven't recorded hardware checks for 0.1.3 yet.
 
+Version 0.2.0 adds a settings window. Screen options are transition speed, light sensitivity, minimum and maximum Auto brightness, slight dimming on battery, a learned-curve graph, and a reset for learned brightness. Keyboard options are an idle timeout (it only turns off light that Auto turned on) and the dark threshold, with a reset. Every default matches 0.1.3 behavior. Manual keyboard control is unchanged. I haven't recorded hardware checks for 0.2.0 yet.
+
 My laptop is a Framework Laptop 13 (AMD Ryzen AI 300 Series), currently running Ubuntu 26.04.1 with GNOME Shell 50. I haven't tested other Framework models. I also installed this on Fedora Workstation 44 and confirmed the following on 2026-10-11:
 
 - Screen brightness responds to covering and uncovering the light sensor.
@@ -37,5 +39,6 @@ This is the checklist I use for a clean-install hardware test on each supported 
 7. Let the desktop idle-dim, then resume activity. Confirm keyboard Auto stays enabled.
 8. Suspend/resume, including one long suspend. Repeat steps 4–6.
 9. Disable and enable the extension. Check that native GNOME controls work while disabled.
-10. Inspect `journalctl --user -b` for extension errors and `systemctl status iio-sensor-proxy` for sensor errors.
+10. Open the settings window. Change each option and confirm the screen and keyboard respond; reset learned brightness and the keyboard settings. With an idle timeout set, stop typing in the dark and confirm the keyboard light fades out and returns on input, and that Fn+Space still advances exactly one preset.
+11. Inspect `journalctl --user -b` for extension errors and `systemctl status iio-sensor-proxy` for sensor errors.
 

@@ -12,8 +12,8 @@ Lux Capacitor adjusts brightness to ambient light, adds separate screen and keyb
 
 | System | Validation |
 | --- | --- |
-| Framework Laptop 13 (AMD Ryzen AI 300 Series), Ubuntu 26.04.1, GNOME Shell 50 | I use it on my laptop. The automated regression checks also pass. |
-| Framework laptop, Fedora Workstation 44 | I installed it and confirmed screen brightness, keyboard controls, and recovery after suspend. |
+| Framework Laptop 13 (AMD Ryzen AI 300 Series), Fedora Workstation 44, GNOME Shell 50 | v0.2.1: I recorded keyboard Auto and Fn+Space on my laptop and confirmed them. Earlier versions: screen brightness, keyboard controls, and recovery after suspend. |
+| Framework Laptop 13 (AMD Ryzen AI 300 Series), Ubuntu 26.04.1, GNOME Shell 50 | I used it on my laptop up to v0.1.2. I haven't tested v0.2.x on Ubuntu hardware yet; the automated checks pass. |
 | Other Framework models | I haven't tested these yet. They need compatible light-sensor and keyboard-backlight interfaces. |
 | Other GNOME versions or KDE, Xfce, Cinnamon | Not supported by this release. |
 | Other laptops with GNOME 50 | Not hardware-tested. Screen control needs an ambient-light sensor supported by iio-sensor-proxy. Keyboard behavior targets Framework's `chromeos::kbd_backlight` interface. |
@@ -28,7 +28,7 @@ I installed this repeatedly on the same Framework laptop while switching between
 - Separate screen and keyboard Auto controls.
 - A settings window (Extensions app → Lux Capacitor → Settings) with transition speed, light sensitivity, minimum and maximum Auto brightness, slight dimming on battery, a graph of the learned brightness curve, and a reset button.
 - Keyboard settings: turn the light off after a chosen idle time (only when Auto turned it on), and the light level below which keyboard Auto lights the keyboard. Fn+Space and the keyboard slider still switch to a manual level and turn keyboard Auto off.
-- Manual keyboard presets: 0%, 20%, 50%, 75%, 100%.
+- Fn+Space steps through 0%, 20%, 50%, 75%, and 100%, and turns keyboard Auto off. The laptop's firmware handles Fn+Space itself with its own levels, so its level can flash for a moment (under about 75 ms) before Lux Capacitor sets the step.
 - Numeric brightness and volume displays, with brightness and volume OSD bars updating immediately as the Quick Settings sliders move; volume keys use steps of 5.
 - Desktop idle dimming preserves keyboard Auto.
 - Resume recovery reinitializes the Framework `i2c-FRMW0005:*` sensor and restarts iio-sensor-proxy. On other hardware the hook only restarts the sensor service.
@@ -46,7 +46,7 @@ Keyboard Auto can leave the backlight at 0% when the room is bright enough. The 
 
 ## Install
 
-Download `Install-Auto-Brightness.run` from the GitHub release, then run it as your normal desktop user:
+Download `Install-Auto-Brightness.run` from the [latest release](https://github.com/iErick17/lux-capacitor/releases/latest), then run it as your normal desktop user:
 
 ```sh
 bash Install-Auto-Brightness.run --check
@@ -85,9 +85,10 @@ Install GJS, Python 3, and GLib tools, then run:
 bash tests/run.sh
 python3 build.py
 bash dist/Install-Auto-Brightness.run --check
+python3 tests/test-install.py "$PWD/dist/Install-Auto-Brightness.run"
 ```
 
-Tests mock keyboard and Quick Settings objects; they do not write hardware brightness or install the extension. The build produces a standalone installer, an extension ZIP, and checksums in `dist/`.
+Tests mock keyboard and Quick Settings objects; they do not write hardware brightness or install the extension. The install test runs the installer in a private settings session with package installation and root actions mocked. The build produces a standalone installer, an extension ZIP, and checksums in `dist/`.
 
 ## License
 

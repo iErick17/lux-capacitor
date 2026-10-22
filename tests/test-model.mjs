@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import {curve, preferredBrightness, upsertPreference, advanceBrightness, MAX_PREFERENCES,
     normalizePreferences, significantLuxChange, limitedCurve} from '../lux-capacitor@ierick17.github.io/brightnessModel.js';
 function assert(ok, message) { if (!ok) throw new Error(message); }

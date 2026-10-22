@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Build the one-file installer from the maintained recovery folder."""
 from pathlib import Path
 import gzip

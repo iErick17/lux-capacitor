@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Exercise the release installer in a private settings session, with root actions mocked."""
 import hashlib
 import io

@@ -18,7 +18,7 @@ On 2026-10-21 I tested 0.2.0 and 0.2.1 on my Framework Laptop 13 with Fedora Wor
 
 Not yet checked on hardware for 0.2.x: the settings window inside the Extensions app, dimming on battery, the keyboard idle timeout, suspend/resume, and anything on Ubuntu.
 
-My laptop is a Framework Laptop 13 (AMD Ryzen AI 300 Series), currently running Ubuntu 26.04.1 with GNOME Shell 50. I haven't tested other Framework models. I also installed this on Fedora Workstation 44 and confirmed the following on 2026-10-11:
+My laptop is a Framework Laptop 13 (AMD Ryzen AI 300 Series), currently running Fedora Workstation 44 with GNOME Shell 50.6. I've also used it with Ubuntu 26.04.1 and GNOME Shell 50. I haven't tested other Framework models. On Fedora Workstation 44 I confirmed the following on 2026-10-11:
 
 - Screen brightness responds to covering and uncovering the light sensor.
 - Keyboard automatic and manual brightness controls work.

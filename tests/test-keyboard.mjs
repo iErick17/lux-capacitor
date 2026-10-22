@@ -72,6 +72,23 @@ test('Keyboard Auto finishes a fade instead of lingering at a few percent', () =
         `fade from 10% took ${ticks} ticks`);
 });
 
+test('Fn+Space turns keyboard Auto off at any level, even mid-fade', () => {
+    // Auto fading out passes through levels the firmware also uses. A
+    // press landing on one of them was taken for the fade's own write, so
+    // Auto stayed on and faded the light straight back to 0.
+    for (const [current, firmware, preset] of [[3, 20, 20], [15, 20, 20], [30, 75, 50], [60, 75, 75], [0, 20, 20]]) {
+        const {c, settings, writes} = fixture(true, current);
+        c._target = 0;
+        const now = GLib.get_monotonic_time();
+        for (const level of [80, 75, 60, 50, 30, 20, 15, 3, 0].filter(l => l >= current))
+            c._ownWrites.push({level, expires: now + 2_000_000});
+        c._lastRequested = current;
+        c._onActualLevel(firmware);
+        assert(!settings.value && writes.at(-1) === preset,
+            `press at ${current}% -> firmware ${firmware}% kept Auto on (writes ${writes.join()})`);
+    }
+});
+
 test('Quick Fn+Space presses each advance one preset, with no press lost', () => {
     const {c, settings, writes, popups} = fixture(false, 0);
     // Firmware levels from a hardware log, pressed faster than the settle

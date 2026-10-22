@@ -668,7 +668,7 @@ export class KeyboardController {
 
         const settling = GLib.get_monotonic_time() < this._settleUntil &&
             (this._settleLevel === null || level === this._settleLevel);
-        if (level === this._currentLevel || this._hasOwnWrite(level) || settling ||
+        if (level === this._currentLevel || this._isOwnLevel(level, previous) || settling ||
             GLib.get_monotonic_time() < this._busChangeUntil) {
             if (level === this._currentLevel)
                 this._changed();
@@ -701,6 +701,19 @@ export class KeyboardController {
         } catch (error) {
             console.error(`Lux Capacitor: keyboard OSD failed: ${error}`);
         }
+    }
+
+    // A fade writes many levels, some of which Fn+Space also produces. Only
+    // a level between the last reading and our latest request can be our
+    // own; a hotkey jumps outside that range, so it always takes control.
+    _isOwnLevel(level, previous) {
+        if (!this._hasOwnWrite(level))
+            return false;
+        const requested = this._lastRequested;
+        if (requested === null || previous === null)
+            return true;
+        return level >= Math.min(previous, requested) &&
+            level <= Math.max(previous, requested);
     }
 
     _hasOwnWrite(level) {

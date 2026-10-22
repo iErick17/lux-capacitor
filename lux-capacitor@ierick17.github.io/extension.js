@@ -7,8 +7,11 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {
+    MAX_PREFERENCES,
     advanceBrightness,
+    normalizePreferences,
     preferredBrightness,
+    significantLuxChange,
     upsertPreference,
 } from './brightnessModel.js';
 import {KeyboardController} from './keyboardController.js';
@@ -30,6 +33,7 @@ const TICK_MS = 100;
 const MANUAL_HOLD_US = 1_500_000;
 const EPSILON = 0.003;
 const KEY_STEP = 0.05;
+const SAVE_DELAY_MS = 500;
 
 export default class AdaptiveBrightnessExtension extends Extension {
     enable() {
@@ -39,8 +43,11 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._powerSettings = new Gio.Settings({schema_id: POWER_SCHEMA});
         this._manager = Main.brightnessManager;
         this._anchors = this._loadAnchors();
+        this._anchorUnit = this._settings.get_string('anchor-unit');
+        this._saveAnchorsId = 0;
         this._autoEnabled = this._settings.get_boolean('enabled');
         this._lux = null;
+        this._targetLux = null;
         this._rawLevel = null;
         this._unit = null;
         this._target = null;
@@ -106,6 +113,12 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._wasLocked = Main.sessionMode.isLocked;
         this._destroyed = true;
         this._stopTimer();
+        // Extensions are disabled on lock, so write a pending preference now.
+        if (this._saveAnchorsId) {
+            GLib.source_remove(this._saveAnchorsId);
+            this._saveAnchorsId = 0;
+            this._saveAnchors();
+        }
         if (this._menuSetupId)
             GLib.source_remove(this._menuSetupId);
         this._menuSetupId = 0;
@@ -257,8 +270,9 @@ export default class AdaptiveBrightnessExtension extends Extension {
             return;
 
         this._anchors = upsertPreference(this._anchors, this._lux, value);
-        this._settings.set_string('anchors', JSON.stringify(this._anchors));
-        this._settings.set_string('anchor-unit', this._unit ?? '');
+        this._anchorUnit = this._unit ?? '';
+        this._scheduleAnchorSave();
+        this._targetLux = this._lux;
         this._target = value;
         this._holdUntil = GLib.get_monotonic_time() + MANUAL_HOLD_US;
         this._stopTimer();
@@ -269,7 +283,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._scheduleQuickSettingsMenus();
         this._keepScreenMenuAvailable();
         if (this._autoEnabled && this._lux !== null)
-            this._setTarget(preferredBrightness(this._lux, this._anchors));
+            this._retarget(this._lux);
         this._syncToggle();
     }
 
@@ -279,10 +293,9 @@ export default class AdaptiveBrightnessExtension extends Extension {
             return;
         this._autoEnabled = enabled;
 
-        // Manual preferences belong to one continuous auto-brightness session.
-        this._anchors = [];
-        this._settings.set_string('anchors', '[]');
-        this._settings.set_string('anchor-unit', '');
+        // Turning Auto off or on resets learned preferences to the default curve.
+        this._clearAnchors();
+        this._targetLux = null;
         this._target = null;
         this._holdUntil = 0;
         this._stopTimer();
@@ -330,11 +343,38 @@ export default class AdaptiveBrightnessExtension extends Extension {
             const anchors = JSON.parse(this._settings.get_string('anchors'));
             if (!Array.isArray(anchors))
                 return [];
-            return anchors.filter(a => Number.isFinite(a?.lux) && a.lux >= 0 &&
-                Number.isFinite(a?.brightness)).slice(-24);
+            // Earlier versions could store contradicting preferences.
+            return normalizePreferences(anchors.filter(a => Number.isFinite(a?.lux) &&
+                a.lux >= 0 && Number.isFinite(a?.brightness)).slice(-MAX_PREFERENCES));
         } catch {
             return [];
         }
+    }
+
+    _scheduleAnchorSave() {
+        // A slider drag emits many updates; write the settled preference once.
+        if (this._saveAnchorsId)
+            GLib.source_remove(this._saveAnchorsId);
+        this._saveAnchorsId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SAVE_DELAY_MS,
+            () => {
+                this._saveAnchorsId = 0;
+                this._saveAnchors();
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    _saveAnchors() {
+        this._settings.set_string('anchors', JSON.stringify(this._anchors));
+        this._settings.set_string('anchor-unit', this._anchorUnit);
+    }
+
+    _clearAnchors() {
+        if (this._saveAnchorsId)
+            GLib.source_remove(this._saveAnchorsId);
+        this._saveAnchorsId = 0;
+        this._anchors = [];
+        this._anchorUnit = '';
+        this._saveAnchors();
     }
 
     _syncToggle() {
@@ -414,6 +454,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._claimPending = false;
         this._sensorClaimed = false;
         this._lux = null;
+        this._targetLux = null;
         this._rawLevel = null;
         this._stopTimer();
         if (this._sensor?.get_name_owner() && this._sensorDesired())
@@ -487,11 +528,9 @@ export default class AdaptiveBrightnessExtension extends Extension {
             !['lux', 'vendor'].includes(unit))
             return;
 
-        const anchorUnit = this._settings.get_string('anchor-unit');
-        if (anchorUnit && anchorUnit !== unit) {
-            this._anchors = [];
-            this._settings.set_string('anchors', '[]');
-            this._settings.set_string('anchor-unit', '');
+        if (this._anchorUnit && this._anchorUnit !== unit) {
+            this._clearAnchors();
+            this._targetLux = null;
         }
         this._unit = unit;
         this._rawLevel = rawLevel;
@@ -499,10 +538,16 @@ export default class AdaptiveBrightnessExtension extends Extension {
         // the curve's 0-1600 range while retaining the reported value in UI.
         const lux = unit === 'vendor' ? rawLevel * 16 : rawLevel;
         this._lux = lux;
-        if (this._autoEnabled)
-            this._setTarget(preferredBrightness(lux, this._anchors));
+        // Small sensor fluctuations should not keep nudging the screen.
+        if (this._autoEnabled && significantLuxChange(this._targetLux, lux))
+            this._retarget(lux);
         this._keyboard?.onSensorLevel(lux);
         this._syncToggle();
+    }
+
+    _retarget(lux) {
+        this._targetLux = lux;
+        this._setTarget(preferredBrightness(lux, this._anchors));
     }
 
     _setTarget(target) {

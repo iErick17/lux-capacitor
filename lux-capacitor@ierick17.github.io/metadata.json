@@ -1,12 +1,12 @@
 {
-  "uuid": "adaptive-brightness-v2@codex.local",
+  "uuid": "lux-capacitor@ierick17.github.io",
   "name": "Lux Capacitor",
   "description": "Ambient screen and keyboard brightness with compact menu switches and numeric brightness and volume displays",
   "shell-version": [
     "50"
   ],
   "settings-schema": "org.gnome.shell.extensions.adaptive-brightness",
-  "version": 9,
-  "version-name": "0.1.2",
+  "version": 10,
+  "version-name": "0.1.3",
   "url": "https://github.com/iErick17/lux-capacitor"
 }

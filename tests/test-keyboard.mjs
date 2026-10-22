@@ -1,7 +1,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
-import {KeyboardController} from '../adaptive-brightness-v2@codex.local/keyboardController.js';
+import {KeyboardController} from '../lux-capacitor@ierick17.github.io/keyboardController.js';
 import Extension, {Main} from './extension-fixture.mjs';
 
 function assert(value, message) {
@@ -318,8 +318,91 @@ test('Brightness and volume OSD bars follow rapid reversals immediately and rest
     }
 });
 
+function screenFixture(anchors = '[]') {
+    const values = {anchors, 'anchor-unit': anchors === '[]' ? '' : 'lux',
+        'native-override-active': false};
+    let writes = 0;
+    const settings = {
+        get_string(key) { return values[key]; },
+        set_string(key, value) { values[key] = value; writes++; },
+        get_boolean(key) { return values[key]; },
+    };
+    const e = new Extension();
+    e._settings = settings;
+    Object.assign(e, {_anchors: e._loadAnchors(), _anchorUnit: values['anchor-unit'],
+        _saveAnchorsId: 0, _autoEnabled: true, _lux: null, _targetLux: null, _unit: null,
+        _sensorClaimed: true, _manager: {globalScale: {value: 0.5}}, _originalKeySteps: new Map()});
+    e._sensorDesired = () => true;
+    e._stopTimer = () => {};
+    e._syncToggle = () => {};
+    const targets = [];
+    e._setTarget = target => targets.push(target);
+    const sense = lux => {
+        e._sensor = {LightLevel: lux, LightLevelUnit: 'lux',
+            ReleaseLightRemote() {}, disconnectObject() {}};
+        e._readLux();
+    };
+    const drag = value => {
+        e._manager.globalScale.value = value;
+        e._onUserUpdate();
+    };
+    return {e, values, targets, sense, drag, writes: () => writes};
+}
+
+function waitForAnchorSave(e) {
+    while (e._saveAnchorsId)
+        GLib.MainContext.default().iteration(true);
+}
+
+test('Screen ignores small light fluctuations but follows real changes', () => {
+    const {targets, sense} = screenFixture();
+    for (const lux of [40, 42, 44, 46])
+        sense(lux);
+    assert(targets.length === 1, 'sensor noise re-targeted the screen');
+    sense(60);
+    assert(targets.length === 2, 'a real light change was ignored');
+});
+
+test('A screen slider drag saves one settled preference after the drag', () => {
+    const {e, values, sense, drag, writes} = screenFixture();
+    sense(60);
+    for (const value of [0.6, 0.62, 0.64])
+        drag(value);
+    assert(writes() === 0 && e._saveAnchorsId, 'drag wrote settings on every step');
+    waitForAnchorSave(e);
+    const saved = JSON.parse(values.anchors);
+    assert(saved.length === 1 && saved[0].lux === 60 && saved[0].brightness === 0.64 &&
+        values['anchor-unit'] === 'lux', 'settled preference was not saved');
+});
+
+test('Turning screen Auto off resets preferences and cancels a pending save', () => {
+    const {e, values, sense, drag} = screenFixture();
+    sense(60);
+    drag(0.7);
+    values.enabled = false;
+    e._updateSensorClaim = () => {};
+    e._onEnabledChanged();
+    assert(!e._saveAnchorsId && values.anchors === '[]' && e._anchors.length === 0,
+        'pending save survived the reset');
+});
+
+test('Disabling on lock writes a pending screen preference', () => {
+    const {e, values, sense, drag} = screenFixture();
+    Main.sessionMode = {isLocked: true};
+    Main.osdWindowManager = {};
+    sense(60);
+    drag(0.7);
+    e.disable();
+    assert(JSON.parse(values.anchors)[0]?.brightness === 0.7, 'pending preference was lost on lock');
+});
+
+test('Contradicting preferences stored by earlier versions are cleaned up on load', () => {
+    const {e} = screenFixture('[{"lux":40,"brightness":0.9},{"lux":150,"brightness":0.3}]');
+    assert(e._anchors.length === 1 && e._anchors[0].lux === 150, 'stored contradiction was kept');
+});
+
 for (const name of ['extension.js', 'keyboardController.js', 'brightnessModel.js']) {
-    const [ok, bytes] = Gio.File.new_for_path(`adaptive-brightness-v2@codex.local/${name}`).load_contents(null);
+    const [ok, bytes] = Gio.File.new_for_path(`lux-capacitor@ierick17.github.io/${name}`).load_contents(null);
     assert(ok, `unable to read ${name}`);
     Reflect.parse(new TextDecoder().decode(bytes), {target: 'module'});
 }

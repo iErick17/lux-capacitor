@@ -9,7 +9,7 @@ import sys
 import tarfile
 import tempfile
 
-UUID = 'adaptive-brightness-v2@codex.local'
+UUID = 'lux-capacitor@ierick17.github.io'
 assert os.geteuid() != 0, 'Run as a normal user (or runuser -u nobody in a container)'
 artifact = pathlib.Path(sys.argv[1]).resolve()
 payload = artifact.read_bytes().split(b'__AUTO_BRIGHTNESS_PAYLOAD__\n', 1)[1]
@@ -93,4 +93,21 @@ media = Gio.Settings.new('org.gnome.settings-daemon.plugins.media-keys')
     assert any(p.read_text() == '// previous extension\n' for p in backups), 'Previous extension was not backed up'
     assert (target / 'extension.js').read_bytes() == (source / UUID / 'extension.js').read_bytes()
     print('PASS: upgrade preserves manual settings and calibration and backs up the previous extension')
+
+    # Releases up to 0.1.2 used another extension ID; upgrading must replace it.
+    legacy_uuid = 'adaptive-brightness-v2@codex.local'
+    legacy = root / 'data/gnome-shell/extensions' / legacy_uuid
+    legacy.mkdir(parents=True)
+    (legacy / 'extension.js').write_text('// legacy extension\n')
+    settings(f"shell.set_strv('enabled-extensions', ['{legacy_uuid}', 'other@example.com'])\nGio.Settings.sync()\n")
+    migrated = install()
+    assert migrated.returncode == 0, migrated.stdout + migrated.stderr
+    assert not legacy.exists(), 'Previous extension ID was left installed'
+    enabled = json.loads(settings("print(json.dumps(shell.get_strv('enabled-extensions')))"))
+    assert legacy_uuid not in enabled and UUID in enabled and 'other@example.com' in enabled, enabled
+    state = json.loads(settings("print(json.dumps(brightness.get_string('anchors')))"))
+    assert state == '[{"lux":40,"brightness":0.7}]', 'Settings were lost when the extension ID changed'
+    backups = list((root / 'state/adaptive-brightness').glob('*/legacy-extension/extension.js'))
+    assert any(p.read_text() == '// legacy extension\n' for p in backups), 'Previous extension ID was not backed up'
+    print('PASS: upgrade from the previous extension ID removes it, keeps settings, and backs it up')
     print('NOTE: package installation, privileged resume-hook installation, and live GNOME Shell activation were mocked; no physical hardware was tested.')

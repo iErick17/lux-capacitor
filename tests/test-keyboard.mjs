@@ -1,7 +1,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
-import {KeyboardController, automaticKeyboardTarget} from '../adaptive-brightness-v2@codex.local/keyboardController.js';
+import {KeyboardController, automaticKeyboardTarget} from '../lux-capacitor@ierick17.github.io/keyboardController.js';
 import Extension, {Main} from './extension-fixture.mjs';
 
 function assert(value, message) {
@@ -505,7 +505,7 @@ test('Resetting learned brightness from the settings window reaches the extensio
 });
 
 for (const name of ['extension.js', 'keyboardController.js', 'brightnessModel.js', 'prefs.js']) {
-    const [ok, bytes] = Gio.File.new_for_path(`adaptive-brightness-v2@codex.local/${name}`).load_contents(null);
+    const [ok, bytes] = Gio.File.new_for_path(`lux-capacitor@ierick17.github.io/${name}`).load_contents(null);
     assert(ok, `unable to read ${name}`);
     Reflect.parse(new TextDecoder().decode(bytes), {target: 'module'});
 }

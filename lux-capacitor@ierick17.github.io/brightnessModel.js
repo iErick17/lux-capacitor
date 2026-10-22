@@ -4,6 +4,9 @@
 export const MIN_BRIGHTNESS = 0;
 export const MAX_BRIGHTNESS = 1;
 export const MAX_PREFERENCES = 24;
+export const BATTERY_DIM_FACTOR = 0.85;
+// Multipliers for the brightening and darkening time constants.
+export const TRANSITION_SPEEDS = Object.freeze({subtle: 2, normal: 1, fast: 0.5});
 
 const RISE_TIME_CONSTANT_SECONDS = 0.65;
 const FALL_TIME_CONSTANT_SECONDS = 2.5;
@@ -12,7 +15,12 @@ const PREFERENCE_RADIUS = 1.5;
 // Preferences closer than this (about 20x lux) must agree on direction.
 const CONSISTENCY_WINDOW = 3;
 const SAMPLE_STEP = 0.05;
-const LUX_DEADBAND = Math.log(1.15);
+// Relative light change needed before the screen re-targets.
+const LUX_DEADBANDS = Object.freeze({
+    low: Math.log(1.3),
+    normal: Math.log(1.15),
+    high: Math.log(1.07),
+});
 
 // These values are display fractions, not raw backlight register values.
 const DEFAULT_CURVE = [
@@ -76,10 +84,20 @@ export function curve(lux) {
     return MAX_BRIGHTNESS;
 }
 
+/**
+ * The default curve kept within the user's Auto limits. Limits only shape
+ * the default; an explicit manual preference is still honored exactly.
+ */
+export function limitedCurve(lux, {min = MIN_BRIGHTNESS, max = MAX_BRIGHTNESS} = {}) {
+    const low = clampBrightness(Math.min(min, max));
+    const high = clampBrightness(Math.max(min, max));
+    return Math.min(high, Math.max(low, curve(lux)));
+}
+
 // Default curve plus fading anchor offsets. Not monotone by itself: a
 // preference's offset can fade faster than the default curve rises.
-function blendedBrightness(x, anchors) {
-    const base = curve(Math.expm1(x));
+function blendedBrightness(x, anchors, limits) {
+    const base = limitedCurve(Math.expm1(x), limits);
     let offset;
     let distance;
     if (x <= anchors[0].x) {
@@ -108,13 +126,14 @@ function blendedBrightness(x, anchors) {
  * never falls as light rises, except midway between two distant preferences
  * that ask for that explicitly.
  */
-export function preferredBrightness(lux, anchors = []) {
+export function preferredBrightness(lux, anchors = [], limits = {}) {
     const x = logLux(lux);
     const sorted = checkedAnchors(anchors)
         .sort((a, b) => a.x - b.x)
-        .map(anchor => ({...anchor, offset: anchor.brightness - curve(anchor.lux)}));
+        .map(anchor => ({...anchor,
+            offset: anchor.brightness - limitedCurve(anchor.lux, limits)}));
     if (sorted.length === 0)
-        return curve(lux);
+        return limitedCurve(lux, limits);
 
     // Split at contradicting neighbours; each segment is consistent.
     let segmentStart = 0;
@@ -135,15 +154,15 @@ export function preferredBrightness(lux, anchors = []) {
 
     // Running maximum on a fixed log-lux grid, interpolated between grid
     // points, removes dips while staying continuous and monotone.
-    let level = blendedBrightness(segmentStart, segment);
+    let level = blendedBrightness(segmentStart, segment, limits);
     let previousX = segmentStart;
     let k = Math.floor(segmentStart / SAMPLE_STEP) + 1;
     for (; k * SAMPLE_STEP <= x; k++) {
         previousX = k * SAMPLE_STEP;
-        level = Math.max(level, blendedBrightness(previousX, segment));
+        level = Math.max(level, blendedBrightness(previousX, segment, limits));
     }
     const nextX = k * SAMPLE_STEP;
-    const nextLevel = Math.max(level, blendedBrightness(nextX, segment));
+    const nextLevel = Math.max(level, blendedBrightness(nextX, segment, limits));
     level += (nextLevel - level) * (x - previousX) / (nextX - previousX);
 
     // Clamping between neighbouring anchors keeps each one exact.
@@ -195,14 +214,15 @@ export function normalizePreferences(anchors) {
 }
 
 /** Ignore small sensor fluctuations, as a fraction of the current light. */
-export function significantLuxChange(previousLux, lux) {
+export function significantLuxChange(previousLux, lux, sensitivity = 'normal') {
     if (previousLux === null || previousLux === undefined)
         return true;
-    return Math.abs(logLux(lux) - logLux(previousLux)) >= LUX_DEADBAND;
+    const deadband = LUX_DEADBANDS[sensitivity] ?? LUX_DEADBANDS.normal;
+    return Math.abs(logLux(lux) - logLux(previousLux)) >= deadband;
 }
 
 /** First-order response: quick brightening, gentler darkening. */
-export function advanceBrightness(current, target, dtSeconds) {
+export function advanceBrightness(current, target, dtSeconds, speed = 'normal') {
     const from = clampBrightness(validFinite(current, 'current brightness'));
     const to = clampBrightness(validFinite(target, 'target brightness'));
     const dt = validFinite(dtSeconds, 'elapsed time');
@@ -211,9 +231,10 @@ export function advanceBrightness(current, target, dtSeconds) {
     if (dt === 0 || from === to)
         return from;
 
-    const timeConstant = to > from
+    const timeConstant = (to > from
         ? RISE_TIME_CONSTANT_SECONDS
-        : FALL_TIME_CONSTANT_SECONDS;
+        : FALL_TIME_CONSTANT_SECONDS) *
+        (TRANSITION_SPEEDS[speed] ?? TRANSITION_SPEEDS.normal);
     const fraction = -Math.expm1(-dt / timeConstant);
     return clampBrightness(from + (to - from) * fraction);
 }

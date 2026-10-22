@@ -28,8 +28,10 @@ const WRITE_ECHO_US = 2_000_000;
 const HOTKEY_SETTLE_US = 650_000;
 const RESUME_GUARD_US = 12_000_000;
 const WAKE_HOLD_MS = 2_000;
-const AUTO_ON_LUX = 10;
-const AUTO_OFF_LUX = 25;
+// The default dark threshold. The off threshold and the whole curve scale
+// with the user's threshold, so the default reproduces the original policy.
+export const DEFAULT_DARK_LUX = 10;
+const OFF_RATIO = 2.5;
 const AUTO_CURVE = [
     [0, 55],
     [2, 48],
@@ -83,11 +85,12 @@ export function keyboardTarget(lux) {
 }
 
 /** Keep the light off until it is quite dark, with a gap to prevent flicker. */
-export function automaticKeyboardTarget(lux, wasLit = false) {
+export function automaticKeyboardTarget(lux, wasLit = false, darkLux = DEFAULT_DARK_LUX) {
     if (!Number.isFinite(lux) || lux < 0)
         throw new RangeError('lux must be a finite nonnegative number');
-    const lit = wasLit ? lux < AUTO_OFF_LUX : lux <= AUTO_ON_LUX;
-    return {lit, target: lit ? keyboardTarget(lux) : 0};
+    const scaled = lux * DEFAULT_DARK_LUX / darkLux;
+    const lit = wasLit ? lux < darkLux * OFF_RATIO : lux <= darkLux;
+    return {lit, target: lit ? keyboardTarget(scaled) : 0};
 }
 
 /** GNOME 50 keyboard-backlight control, including firmware hotkey fallback. */
@@ -95,8 +98,12 @@ export class KeyboardController {
     static MANUAL_LEVELS = MANUAL_LEVELS;
 
     constructor({settings, onChanged = () => {}, onManualChanged = () => {},
-        isDimming = () => false}) {
+        isDimming = () => false, idleMonitor = null}) {
         this._settings = settings;
+        this._idleMonitor = idleMonitor;
+        this._idleWatchId = 0;
+        this._activeWatchId = 0;
+        this._idle = false;
         this._onChanged = onChanged;
         this._onManualChanged = onManualChanged;
         this._isDimming = isDimming;
@@ -170,6 +177,9 @@ export class KeyboardController {
             });
         this._settingsId = this._settings.connect('changed::keyboard-auto-enabled',
             () => this._onAutoSettingChanged());
+        this._optionsIds = ['keyboard-idle-timeout', 'keyboard-dark-lux'].map(key =>
+            this._settings.connect(`changed::${key}`, () => this._onOptionsChanged()));
+        this._watchIdle();
         if (afterLock)
             this._beginWakeHold();
         this._powerSignalId = Gio.DBus.system.signal_subscribe(
@@ -204,6 +214,10 @@ export class KeyboardController {
         if (this._settingsId)
             this._settings.disconnect(this._settingsId);
         this._settingsId = 0;
+        for (const id of this._optionsIds ?? [])
+            this._settings.disconnect(id);
+        this._optionsIds = [];
+        this._unwatchIdle();
         if (this._sleepSignalId)
             Gio.DBus.system.signal_unsubscribe(this._sleepSignalId);
         this._sleepSignalId = 0;
@@ -285,16 +299,72 @@ export class KeyboardController {
     _retargetFromSensor() {
         if (this._lux === null || this._wakeHoldId || this._waitingForWakeLux)
             return;
-        const {lit, target} = automaticKeyboardTarget(this._lux, this._autoLit);
+        const {lit, target} = automaticKeyboardTarget(this._lux, this._autoLit,
+            this._settings.get_int('keyboard-dark-lux'));
         this._autoLit = lit;
-        this._target = target;
+        // While idle, Auto keeps its on/off state but fades the light out.
+        this._target = this._idle ? 0 : target;
         this._startRamp();
+    }
+
+    _onOptionsChanged() {
+        this._watchIdle();
+        if (this._autoEnabled)
+            this._retargetFromSensor();
+    }
+
+    // Only Auto's own light is turned off when idle; manual levels are
+    // never touched, and the fade goes through the normal ramp so its
+    // writes are recognized as our own rather than as Fn+Space.
+    _watchIdle() {
+        this._unwatchIdle();
+        const seconds = this._settings.get_int('keyboard-idle-timeout');
+        if (!this._enabled || !this._idleMonitor || seconds <= 0)
+            return;
+        this._idleWatchId = this._idleMonitor.add_idle_watch(seconds * 1000,
+            () => this._onIdle());
+    }
+
+    _unwatchIdle() {
+        if (this._idleWatchId)
+            this._idleMonitor.remove_watch(this._idleWatchId);
+        if (this._activeWatchId)
+            this._idleMonitor.remove_watch(this._activeWatchId);
+        this._idleWatchId = 0;
+        this._activeWatchId = 0;
+        if (this._idle) {
+            this._idle = false;
+            if (this._enabled && this._autoEnabled)
+                this._retargetFromSensor();
+        }
+    }
+
+    _onIdle() {
+        if (!this._enabled || this._idle)
+            return;
+        this._idle = true;
+        if (!this._activeWatchId) {
+            this._activeWatchId = this._idleMonitor.add_user_active_watch(
+                () => this._onActive());
+        }
+        if (this._autoEnabled)
+            this._retargetFromSensor();
+    }
+
+    _onActive() {
+        // User-active watches fire once and are removed by Mutter.
+        this._activeWatchId = 0;
+        if (!this._idle)
+            return;
+        this._idle = false;
+        if (this._enabled && this._autoEnabled)
+            this._retargetFromSensor();
     }
 
     setAutoEnabled(enabled, reason = 'Auto switch') {
         const next = !!enabled;
         if (!next && this._autoEnabled) {
-            console.info(`Adaptive Brightness: keyboard Auto off (${reason}); ` +
+            console.info(`Lux Capacitor: keyboard Auto off (${reason}); ` +
                 `observed=${this._lastActual}, requested=${this._lastRequested}`);
         }
         if (this._settings.get_boolean('keyboard-auto-enabled') !== next)
@@ -341,7 +411,7 @@ export class KeyboardController {
                 if (!this._enabled || generation !== this._generation)
                     return;
                 if (error) {
-                    console.error(`Adaptive Brightness: keyboard service unavailable: ${error}`);
+                    console.error(`Lux Capacitor: keyboard service unavailable: ${error}`);
                     this._scheduleRetry();
                     return;
                 }
@@ -538,7 +608,7 @@ export class KeyboardController {
                 level = Number(raw);
             } catch (error) {
                 if (!this._cancellable?.is_cancelled())
-                    console.error(`Adaptive Brightness: keyboard read failed: ${error}`);
+                    console.error(`Lux Capacitor: keyboard read failed: ${error}`);
                 return;
             }
             // A read started before a notification may contain the old level.
@@ -618,7 +688,7 @@ export class KeyboardController {
         try {
             this._onManualChanged(level);
         } catch (error) {
-            console.error(`Adaptive Brightness: keyboard OSD failed: ${error}`);
+            console.error(`Lux Capacitor: keyboard OSD failed: ${error}`);
         }
     }
 
@@ -674,7 +744,7 @@ export class KeyboardController {
                     connection.call_finish(result);
                 } catch (error) {
                     if (!this._cancellable?.is_cancelled())
-                        console.error(`Adaptive Brightness: keyboard write failed: ${error}`);
+                        console.error(`Lux Capacitor: keyboard write failed: ${error}`);
                     this._ownWrites = this._ownWrites.filter(write =>
                         write.level !== level);
                 }
@@ -736,7 +806,7 @@ export class KeyboardController {
         try {
             this._onChanged();
         } catch (error) {
-            console.error(`Adaptive Brightness: keyboard UI update failed: ${error}`);
+            console.error(`Lux Capacitor: keyboard UI update failed: ${error}`);
         }
     }
 }

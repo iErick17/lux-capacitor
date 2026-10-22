@@ -7,6 +7,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {
+    BATTERY_DIM_FACTOR,
     MAX_PREFERENCES,
     advanceBrightness,
     normalizePreferences,
@@ -27,6 +28,16 @@ const SENSOR_XML = `
   </interface>
 </node>`;
 const SensorProxy = Gio.DBusProxy.makeProxyWrapper(SENSOR_XML);
+
+const UPOWER_XML = `
+<node>
+  <interface name="org.freedesktop.UPower">
+    <property name="OnBattery" type="b" access="read"/>
+  </interface>
+</node>`;
+const UPowerProxy = Gio.DBusProxy.makeProxyWrapper(UPOWER_XML);
+const SCREEN_OPTION_KEYS = ['transition-speed', 'light-sensitivity',
+    'screen-min-brightness', 'screen-max-brightness', 'dim-on-battery'];
 
 const POWER_SCHEMA = 'org.gnome.settings-daemon.plugins.power';
 const TICK_MS = 100;
@@ -83,8 +94,14 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._keyboardSliderId = 0;
         this._keyboardDiscreteId = 0;
 
+        this._onBattery = false;
+        this._upower = null;
+        this._writingAnchors = false;
+        this._readScreenOptions();
+
         this._keyboard = new KeyboardController({
             settings: this._settings,
+            idleMonitor: global.backend.get_core_idle_monitor(),
             onChanged: () => this._onKeyboardChanged(),
             onManualChanged: level => this._showKeyboardOSD(level),
             isDimming: () => this._manager?.dimming ?? false,
@@ -93,6 +110,10 @@ export default class AdaptiveBrightnessExtension extends Extension {
 
         this._settingsId = this._settings.connect('changed::enabled',
             () => this._onEnabledChanged());
+        this._anchorsChangedId = this._settings.connect('changed::anchors',
+            () => this._onAnchorsChanged());
+        this._optionIds = SCREEN_OPTION_KEYS.map(key =>
+            this._settings.connect(`changed::${key}`, () => this._onScreenOptionsChanged()));
         this._userUpdateId = this._manager.connect('user-update',
             () => this._onUserUpdate());
         this._managerChangedId = this._manager.connect('changed',
@@ -107,6 +128,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._scheduleQuickSettingsMenus();
         this._keyboard.enable(afterLock);
         this._connectSensor();
+        this._connectUPower();
     }
 
     disable() {
@@ -148,6 +170,13 @@ export default class AdaptiveBrightnessExtension extends Extension {
         }
         if (this._settingsId)
             this._settings.disconnect(this._settingsId);
+        if (this._anchorsChangedId)
+            this._settings.disconnect(this._anchorsChangedId);
+        for (const id of this._optionIds ?? [])
+            this._settings.disconnect(id);
+        this._optionIds = [];
+        this._upower?.disconnectObject(this);
+        this._upower = null;
         if (this._userUpdateId)
             this._manager.disconnect(this._userUpdateId);
         if (this._managerChangedId)
@@ -269,7 +298,10 @@ export default class AdaptiveBrightnessExtension extends Extension {
         if (!Number.isFinite(value))
             return;
 
-        this._anchors = upsertPreference(this._anchors, this._lux, value);
+        // Store the undimmed preference so battery dimming stays a small,
+        // separate adjustment on top of what the user chose.
+        this._anchors = upsertPreference(this._anchors, this._lux,
+            Math.min(1, value / this._batteryFactor()));
         this._anchorUnit = this._unit ?? '';
         this._scheduleAnchorSave();
         this._targetLux = this._lux;
@@ -364,8 +396,74 @@ export default class AdaptiveBrightnessExtension extends Extension {
     }
 
     _saveAnchors() {
-        this._settings.set_string('anchors', JSON.stringify(this._anchors));
-        this._settings.set_string('anchor-unit', this._anchorUnit);
+        this._writingAnchors = true;
+        try {
+            this._settings.set_string('anchors', JSON.stringify(this._anchors));
+            this._settings.set_string('anchor-unit', this._anchorUnit);
+        } finally {
+            this._writingAnchors = false;
+        }
+    }
+
+    _onAnchorsChanged() {
+        // The preferences window resets learned brightness through settings.
+        if (this._writingAnchors)
+            return;
+        if (this._saveAnchorsId)
+            GLib.source_remove(this._saveAnchorsId);
+        this._saveAnchorsId = 0;
+        this._anchors = this._loadAnchors();
+        this._anchorUnit = this._settings.get_string('anchor-unit');
+        this._retargetNow();
+    }
+
+    _readScreenOptions() {
+        this._speed = this._settings.get_string('transition-speed');
+        this._sensitivity = this._settings.get_string('light-sensitivity');
+        this._limits = {
+            min: this._settings.get_int('screen-min-brightness') / 100,
+            max: this._settings.get_int('screen-max-brightness') / 100,
+        };
+        this._dimOnBattery = this._settings.get_boolean('dim-on-battery');
+    }
+
+    _onScreenOptionsChanged() {
+        this._readScreenOptions();
+        this._retargetNow();
+    }
+
+    _retargetNow() {
+        this._targetLux = null;
+        if (this._autoEnabled && this._lux !== null)
+            this._retarget(this._lux);
+    }
+
+    _batteryFactor() {
+        return this._dimOnBattery && this._onBattery ? BATTERY_DIM_FACTOR : 1;
+    }
+
+    _connectUPower() {
+        new UPowerProxy(Gio.DBus.system, 'org.freedesktop.UPower',
+            '/org/freedesktop/UPower', (proxy, error) => {
+                if (this._destroyed)
+                    return;
+                if (error) {
+                    console.error(`Lux Capacitor: power status unavailable: ${error}`);
+                    return;
+                }
+                this._upower = proxy;
+                proxy.connectObject('g-properties-changed', () => this._onPowerChanged(), this);
+                this._onPowerChanged();
+            }, this._sensorCancellable);
+    }
+
+    _onPowerChanged() {
+        const onBattery = !!this._upower?.OnBattery;
+        if (onBattery === this._onBattery)
+            return;
+        this._onBattery = onBattery;
+        if (this._dimOnBattery)
+            this._retargetNow();
     }
 
     _clearAnchors() {
@@ -427,7 +525,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
                 if (this._destroyed)
                     return;
                 if (error) {
-                    console.error(`Adaptive Brightness: light sensor unavailable: ${error}`);
+                    console.error(`Lux Capacitor: light sensor unavailable: ${error}`);
                     this._syncToggle();
                     this._sensorRetryId = GLib.timeout_add_seconds(
                         GLib.PRIORITY_DEFAULT, 15, () => {
@@ -484,7 +582,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
             this._claimPending = false;
             if (error) {
                 if (!this._destroyed)
-                    console.error(`Adaptive Brightness: could not claim light sensor: ${error}`);
+                    console.error(`Lux Capacitor: could not claim light sensor: ${error}`);
                 if (!this._destroyed && this._sensorDesired() && !this._claimRetryId) {
                     this._claimRetryId = GLib.timeout_add_seconds(
                         GLib.PRIORITY_DEFAULT, 15, () => {
@@ -514,7 +612,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._sensorClaimed = false;
         this._sensor.ReleaseLightRemote((_result, error) => {
             if (error && !this._destroyed)
-                console.error(`Adaptive Brightness: could not release light sensor: ${error}`);
+                console.error(`Lux Capacitor: could not release light sensor: ${error}`);
         });
         this._syncToggle();
     }
@@ -539,7 +637,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
         const lux = unit === 'vendor' ? rawLevel * 16 : rawLevel;
         this._lux = lux;
         // Small sensor fluctuations should not keep nudging the screen.
-        if (this._autoEnabled && significantLuxChange(this._targetLux, lux))
+        if (this._autoEnabled && significantLuxChange(this._targetLux, lux, this._sensitivity))
             this._retarget(lux);
         this._keyboard?.onSensorLevel(lux);
         this._syncToggle();
@@ -547,7 +645,8 @@ export default class AdaptiveBrightnessExtension extends Extension {
 
     _retarget(lux) {
         this._targetLux = lux;
-        this._setTarget(preferredBrightness(lux, this._anchors));
+        this._setTarget(preferredBrightness(lux, this._anchors, this._limits) *
+            this._batteryFactor());
     }
 
     _setTarget(target) {
@@ -577,7 +676,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
             this._timerId = 0;
             return GLib.SOURCE_REMOVE;
         }
-        let next = advanceBrightness(current, this._target, dt);
+        let next = advanceBrightness(current, this._target, dt, this._speed);
         if (Math.abs(next - this._target) <= EPSILON)
             next = this._target;
         this._setBrightnessSilently(next);

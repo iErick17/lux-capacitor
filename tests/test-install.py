@@ -74,7 +74,7 @@ media = Gio.Settings.new('org.gnome.settings-daemon.plugins.media-keys')
     assert fresh.returncode == 0, fresh.stdout + fresh.stderr
     target = root / 'data/gnome-shell/extensions' / UUID
     assert (target / 'schemas/gschemas.compiled').exists()
-    for name in ('extension.js', 'keyboardController.js', 'brightnessModel.js', 'metadata.json'):
+    for name in ('extension.js', 'keyboardController.js', 'brightnessModel.js', 'prefs.js', 'metadata.json'):
         assert (target / name).read_bytes() == (source / UUID / name).read_bytes()
     state = json.loads(settings("print(json.dumps([brightness.get_boolean('enabled'), brightness.get_boolean('keyboard-auto-enabled'), media.get_int('volume-step'), shell.get_strv('enabled-extensions')]))"))
     assert state[:3] == [True, True, 5] and UUID in state[3], state

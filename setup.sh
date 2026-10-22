@@ -66,6 +66,8 @@ for key, value in saved['brightness'].items():
     if brightness.get_user_value(key) is None:
         if isinstance(value, bool):
             brightness.set_boolean(key, value)
+        elif isinstance(value, int):
+            brightness.set_int(key, value)
         else:
             brightness.set_string(key, value)
 Gio.Settings.new('org.gnome.settings-daemon.plugins.media-keys').set_int('volume-step', saved['volume-step'])

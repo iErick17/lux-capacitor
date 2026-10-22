@@ -3,7 +3,14 @@
     "enabled": true,
     "keyboard-auto-enabled": true,
     "anchors": "[]",
-    "anchor-unit": ""
+    "anchor-unit": "",
+    "transition-speed": "normal",
+    "light-sensitivity": "normal",
+    "screen-min-brightness": 0,
+    "screen-max-brightness": 100,
+    "dim-on-battery": false,
+    "keyboard-idle-timeout": 0,
+    "keyboard-dark-lux": 10
   },
   "volume-step": 5
 }

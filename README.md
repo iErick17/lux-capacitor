@@ -26,6 +26,8 @@ I installed this repeatedly on the same Framework laptop while switching between
 - Small light-sensor fluctuations are ignored, so the screen only moves when the light really changes.
 - Learned preferences persist across logins and reboots. Turning screen Auto off resets them to the default curve.
 - Separate screen and keyboard Auto controls.
+- A settings window (Extensions app → Lux Capacitor → Settings) with transition speed, light sensitivity, minimum and maximum Auto brightness, slight dimming on battery, a graph of the learned brightness curve, and a reset button.
+- Keyboard settings: turn the light off after a chosen idle time (only when Auto turned it on), and the light level below which keyboard Auto lights the keyboard. Fn+Space and the keyboard slider still switch to a manual level and turn keyboard Auto off.
 - Manual keyboard presets: 0%, 20%, 50%, 75%, 100%.
 - Numeric brightness and volume displays, with brightness and volume OSD bars updating immediately as the Quick Settings sliders move; volume keys use steps of 5.
 - Desktop idle dimming preserves keyboard Auto.

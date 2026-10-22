@@ -17,6 +17,48 @@
       <default>''</default>
       <summary>Sensor unit used by the stored preferences</summary>
     </key>
+    <key name="transition-speed" type="s">
+      <choices>
+        <choice value="subtle"/>
+        <choice value="normal"/>
+        <choice value="fast"/>
+      </choices>
+      <default>'normal'</default>
+      <summary>How quickly screen brightness follows the light</summary>
+    </key>
+    <key name="light-sensitivity" type="s">
+      <choices>
+        <choice value="low"/>
+        <choice value="normal"/>
+        <choice value="high"/>
+      </choices>
+      <default>'normal'</default>
+      <summary>How large a light change must be before screen brightness moves</summary>
+    </key>
+    <key name="screen-min-brightness" type="i">
+      <range min="0" max="100"/>
+      <default>0</default>
+      <summary>Lowest screen brightness Auto chooses by itself, in percent</summary>
+    </key>
+    <key name="screen-max-brightness" type="i">
+      <range min="0" max="100"/>
+      <default>100</default>
+      <summary>Highest screen brightness Auto chooses by itself, in percent</summary>
+    </key>
+    <key name="dim-on-battery" type="b">
+      <default>false</default>
+      <summary>Slightly dim the screen while on battery power</summary>
+    </key>
+    <key name="keyboard-idle-timeout" type="i">
+      <range min="0" max="3600"/>
+      <default>0</default>
+      <summary>Seconds of inactivity before Auto turns the keyboard light off; 0 disables it</summary>
+    </key>
+    <key name="keyboard-dark-lux" type="i">
+      <range min="1" max="200"/>
+      <default>10</default>
+      <summary>Ambient light, in lux, below which keyboard Auto turns the light on</summary>
+    </key>
     <key name="native-override-active" type="b">
       <default>false</default>
       <summary>Whether GNOME ambient brightness was overridden</summary>

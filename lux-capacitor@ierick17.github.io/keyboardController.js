@@ -364,7 +364,7 @@ export class KeyboardController {
     setAutoEnabled(enabled, reason = 'Auto switch') {
         const next = !!enabled;
         if (!next && this._autoEnabled) {
-            console.info(`Adaptive Brightness: keyboard Auto off (${reason}); ` +
+            console.info(`Lux Capacitor: keyboard Auto off (${reason}); ` +
                 `observed=${this._lastActual}, requested=${this._lastRequested}`);
         }
         if (this._settings.get_boolean('keyboard-auto-enabled') !== next)
@@ -411,7 +411,7 @@ export class KeyboardController {
                 if (!this._enabled || generation !== this._generation)
                     return;
                 if (error) {
-                    console.error(`Adaptive Brightness: keyboard service unavailable: ${error}`);
+                    console.error(`Lux Capacitor: keyboard service unavailable: ${error}`);
                     this._scheduleRetry();
                     return;
                 }
@@ -608,7 +608,7 @@ export class KeyboardController {
                 level = Number(raw);
             } catch (error) {
                 if (!this._cancellable?.is_cancelled())
-                    console.error(`Adaptive Brightness: keyboard read failed: ${error}`);
+                    console.error(`Lux Capacitor: keyboard read failed: ${error}`);
                 return;
             }
             // A read started before a notification may contain the old level.
@@ -688,7 +688,7 @@ export class KeyboardController {
         try {
             this._onManualChanged(level);
         } catch (error) {
-            console.error(`Adaptive Brightness: keyboard OSD failed: ${error}`);
+            console.error(`Lux Capacitor: keyboard OSD failed: ${error}`);
         }
     }
 
@@ -744,7 +744,7 @@ export class KeyboardController {
                     connection.call_finish(result);
                 } catch (error) {
                     if (!this._cancellable?.is_cancelled())
-                        console.error(`Adaptive Brightness: keyboard write failed: ${error}`);
+                        console.error(`Lux Capacitor: keyboard write failed: ${error}`);
                     this._ownWrites = this._ownWrites.filter(write =>
                         write.level !== level);
                 }
@@ -806,7 +806,7 @@ export class KeyboardController {
         try {
             this._onChanged();
         } catch (error) {
-            console.error(`Adaptive Brightness: keyboard UI update failed: ${error}`);
+            console.error(`Lux Capacitor: keyboard UI update failed: ${error}`);
         }
     }
 }

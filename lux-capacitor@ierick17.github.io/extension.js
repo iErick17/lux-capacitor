@@ -448,7 +448,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
                 if (this._destroyed)
                     return;
                 if (error) {
-                    console.error(`Adaptive Brightness: power status unavailable: ${error}`);
+                    console.error(`Lux Capacitor: power status unavailable: ${error}`);
                     return;
                 }
                 this._upower = proxy;
@@ -525,7 +525,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
                 if (this._destroyed)
                     return;
                 if (error) {
-                    console.error(`Adaptive Brightness: light sensor unavailable: ${error}`);
+                    console.error(`Lux Capacitor: light sensor unavailable: ${error}`);
                     this._syncToggle();
                     this._sensorRetryId = GLib.timeout_add_seconds(
                         GLib.PRIORITY_DEFAULT, 15, () => {
@@ -582,7 +582,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
             this._claimPending = false;
             if (error) {
                 if (!this._destroyed)
-                    console.error(`Adaptive Brightness: could not claim light sensor: ${error}`);
+                    console.error(`Lux Capacitor: could not claim light sensor: ${error}`);
                 if (!this._destroyed && this._sensorDesired() && !this._claimRetryId) {
                     this._claimRetryId = GLib.timeout_add_seconds(
                         GLib.PRIORITY_DEFAULT, 15, () => {
@@ -612,7 +612,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._sensorClaimed = false;
         this._sensor.ReleaseLightRemote((_result, error) => {
             if (error && !this._destroyed)
-                console.error(`Adaptive Brightness: could not release light sensor: ${error}`);
+                console.error(`Lux Capacitor: could not release light sensor: ${error}`);
         });
         this._syncToggle();
     }

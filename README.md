@@ -44,6 +44,14 @@ These screenshots are from my Framework laptop on Ubuntu. Click the arrow beside
 
 Keyboard Auto can leave the backlight at 0% when the room is bright enough. The screenshots show the controls; the keyboard percentage reflects the current backlight level.
 
+## Settings
+
+Open Extensions, then Lux Capacitor → Settings, or run `gnome-extensions prefs lux-capacitor@ierick17.github.io`. The graph shows the default curve (dashed) and the curve Auto uses after your adjustments (solid, with each adjustment as a dot); this screenshot uses two example adjustments.
+
+<p>
+  <img src="screenshots/settings-window.png" alt="Lux Capacitor settings window with screen options, a learned brightness graph, and keyboard options" width="420">
+</p>
+
 ## Install
 
 Download `Install-Auto-Brightness.run` from the [latest release](https://github.com/iErick17/lux-capacitor/releases/latest), then run it as your normal desktop user:

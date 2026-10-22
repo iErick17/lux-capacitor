@@ -6,7 +6,17 @@ The v0.1.0 release used the Auto Brightness version 7 code I installed on my Fra
 
 Version 0.1.3 changes screen Auto only. Learned preferences can no longer make the screen dimmer in brighter light, a newer preference replaces a nearby contradicting one, and contradictions stored by earlier versions are cleaned up on load. Light changes under about 15% no longer re-target the screen, and a slider drag saves its preference once, 500 ms after the drag settles (or immediately when the screen locks). Keyboard behavior is unchanged. I haven't recorded hardware checks for 0.1.3 yet.
 
-Version 0.2.0 adds a settings window. Screen options are transition speed, light sensitivity, minimum and maximum Auto brightness, slight dimming on battery, a learned-curve graph, and a reset for learned brightness. Keyboard options are an idle timeout (it only turns off light that Auto turned on) and the dark threshold, with a reset. Every default matches 0.1.3 behavior. Manual keyboard control is unchanged. I haven't recorded hardware checks for 0.2.0 yet.
+Version 0.2.0 adds a settings window. Screen options are transition speed, light sensitivity, minimum and maximum Auto brightness, slight dimming on battery, a learned-curve graph, and a reset for learned brightness. Keyboard options are an idle timeout (it only turns off light that Auto turned on) and the dark threshold, with a reset. Every default matches 0.1.3 behavior. Manual keyboard control is unchanged.
+
+Version 0.2.1 fixes keyboard problems I found while testing 0.2.0. Every Fn+Space press advances exactly one of the 0/20/50/75/100 steps and turns keyboard Auto off, even during an Auto fade. Keyboard Auto fades finish instead of lingering at a few percent. The keyboard level is checked every 50 ms instead of 200 ms, which shortens the brief flash of the firmware's own level between steps.
+
+On 2026-10-21 I tested 0.2.0 and 0.2.1 on my Framework Laptop 13 with Fedora Workstation 44 and GNOME Shell 50.6, recording the keyboard level, the extension's writes, and key events while I used it:
+
+- Fn+Space never reaches the OS as a key event. The firmware handles it and cycles 0 → 20 → 75 → 100 → 0 by itself, and the extension then sets its step.
+- With 0.2.1, six full Fn+Space cycles, including presses about 0.3 s apart, each gave exactly one step in order. The 50 ms check was added after this recording.
+- Keyboard Auto lit the keyboard when I covered the light sensor and faded it out when I uncovered it.
+
+Not yet checked on hardware for 0.2.x: the settings window inside the Extensions app, dimming on battery, the keyboard idle timeout, suspend/resume, and anything on Ubuntu.
 
 My laptop is a Framework Laptop 13 (AMD Ryzen AI 300 Series), currently running Ubuntu 26.04.1 with GNOME Shell 50. I haven't tested other Framework models. I also installed this on Fedora Workstation 44 and confirmed the following on 2026-10-11:
 

@@ -55,16 +55,16 @@ The installer checks GNOME Shell 50, installs dependencies using apt on Ubuntu o
 
 From a source checkout, run `bash install.sh` instead.
 
-The extension ZIP can also be installed with `gnome-extensions install --force <file>.shell-extension.zip`, followed by logout/login and `gnome-extensions enable adaptive-brightness-v2@codex.local`. This installs the extension only: it does not install dependencies, set the volume step, or install the system resume hook.
+The extension ZIP can also be installed with `gnome-extensions install --force <file>.shell-extension.zip`, followed by logout/login and `gnome-extensions enable lux-capacitor@ierick17.github.io`. This installs the extension only: it does not install dependencies, set the volume step, or install the system resume hook.
 
-The existing extension UUID is retained so installation updates the original Auto Brightness extension rather than loading two brightness controllers.
+Since 0.1.3 the extension ID is `lux-capacitor@ierick17.github.io`. The installer removes the copy installed under the previous ID (after backing it up) so two brightness controllers never run at once, and your settings carry over. If you install the ZIP by hand instead, uninstall the previous version first.
 
 ## Disable and remove
 
 Disable using GNOME Extensions, or run:
 
 ```sh
-gnome-extensions disable adaptive-brightness-v2@codex.local
+gnome-extensions disable lux-capacitor@ierick17.github.io
 ```
 
 The system resume hook remains installed. To remove it, if you installed it through this project:
@@ -73,7 +73,7 @@ The system resume hook remains installed. To remove it, if you installed it thro
 sudo rm /usr/lib/systemd/system-sleep/90-restart-iio-sensor-proxy
 ```
 
-Remove the extension through GNOME Extensions or `gnome-extensions uninstall adaptive-brightness-v2@codex.local`. Disable it first. Installation backups of the previous extension and settings are stored under `~/.local/state/adaptive-brightness/`. Disabling does not restore the volume step; its previous value is in the backup's `desktop-settings.json`.
+Remove the extension through GNOME Extensions or `gnome-extensions uninstall lux-capacitor@ierick17.github.io`. Disable it first. Installation backups of the previous extension and settings are stored under `~/.local/state/adaptive-brightness/`. Disabling does not restore the volume step; its previous value is in the backup's `desktop-settings.json`.
 
 ## Development
 

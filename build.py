@@ -10,7 +10,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parent
 SOURCE = ROOT
 OUTPUT = ROOT / 'dist/Install-Auto-Brightness.run'
-UUID = 'adaptive-brightness-v2@codex.local'
+UUID = 'lux-capacitor@ierick17.github.io'
 
 HEADER = '''#!/usr/bin/env bash
 set -euo pipefail

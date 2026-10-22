@@ -6,7 +6,10 @@ if (( EUID == 0 )); then
     exit 1
 fi
 base=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-uuid=adaptive-brightness-v2@codex.local
+uuid=lux-capacitor@ierick17.github.io
+# Releases up to 0.1.2 used this extension ID. Upgrades remove it so two
+# brightness controllers never run at once; its settings carry over.
+legacy_uuid=adaptive-brightness-v2@codex.local
 shell_version=$(gnome-shell --version)
 if [[ ! "$shell_version" =~ GNOME\ Shell\ 50([.]|$) ]]; then
     echo "This extension requires GNOME Shell 50; found: $shell_version" >&2
@@ -43,10 +46,16 @@ if [[ -d "$target" ]]; then
     cp -a "$target" "$save/extension"
     gnome-extensions disable "$uuid" || true
 fi
+legacy="$(dirname "$target")/$legacy_uuid"
+if [[ -d "$legacy" ]]; then
+    cp -a "$legacy" "$save/legacy-extension"
+    gnome-extensions disable "$legacy_uuid" || true
+    rm -rf -- "$legacy"
+fi
 mkdir -p "$target"
 cp -a "$base/$uuid/." "$target/"
 glib-compile-schemas "$target/schemas"
-python3 - "$base/default-settings.json" "$target/schemas" <<'PY'
+python3 - "$base/default-settings.json" "$target/schemas" "$legacy_uuid" <<'PY'
 from gi.repository import Gio
 import json, sys
 with open(sys.argv[1]) as f:
@@ -62,11 +71,14 @@ for key, value in saved['brightness'].items():
 Gio.Settings.new('org.gnome.settings-daemon.plugins.media-keys').set_int('volume-step', saved['volume-step'])
 settings = Gio.Settings.new('org.gnome.shell')
 settings.set_boolean('disable-user-extensions', False)
-uuid = 'adaptive-brightness-v2@codex.local'
-enabled = settings.get_strv('enabled-extensions')
+uuid = 'lux-capacitor@ierick17.github.io'
+legacy = sys.argv[3]
+enabled = [x for x in settings.get_strv('enabled-extensions') if x != legacy]
 if uuid not in enabled:
-    settings.set_strv('enabled-extensions', enabled + [uuid])
-settings.set_strv('disabled-extensions', [x for x in settings.get_strv('disabled-extensions') if x != uuid])
+    enabled.append(uuid)
+settings.set_strv('enabled-extensions', enabled)
+settings.set_strv('disabled-extensions', [x for x in settings.get_strv('disabled-extensions')
+                                          if x not in (uuid, legacy)])
 Gio.Settings.sync()
 PY
 gnome-extensions enable "$uuid" || true

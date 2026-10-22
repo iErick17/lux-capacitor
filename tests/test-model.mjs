@@ -1,5 +1,5 @@
 import {curve, preferredBrightness, upsertPreference, advanceBrightness, MAX_PREFERENCES,
-    normalizePreferences, significantLuxChange} from '../adaptive-brightness-v2@codex.local/brightnessModel.js';
+    normalizePreferences, significantLuxChange} from '../lux-capacitor@ierick17.github.io/brightnessModel.js';
 function assert(ok, message) { if (!ok) throw new Error(message); }
 assert(curve(0) === 0.08 && curve(1600) === 1, 'Default curve endpoints changed');
 let previous = 0;

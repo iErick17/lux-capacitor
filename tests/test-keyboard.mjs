@@ -40,16 +40,13 @@ function acknowledge(c, level) {
     c._onProxySignal('BrightnessChanged', new GLib.Variant('(is)', [level, 'set property']));
 }
 
-test('Five spaced hardware changes request the restored 20, 50, 75, 100, 0 presets', () => {
+test('Fn+Space keeps the firmware 20, 75, 100, 0 cycle without overriding it', () => {
     const {c, settings, writes, popups} = fixture();
-    // Representative native changes from the corresponding manual settings.
-    // This verifies remapping, not firmware Auto removal or physical timing.
-    const hardware = [20, 75, 0, 100, 5];
-    const expected = [20, 50, 75, 100, 0];
+    // The Framework EC's own cycle, as observed on hardware. Each level is
+    // kept and written back unchanged, so the light never shows another level.
+    const expected = [20, 75, 100, 0];
     for (let i = 0; i < expected.length; i++) {
-        c._settleUntil = 0;
-        c._ownWrites = [];
-        c._onActualLevel(hardware[i]);
+        c._onActualLevel(expected[i]);
         assert(writes.at(-1) === expected[i], `wrong preset at step ${i}`);
         assert(popups.length === i, 'popup shown before the selected value was confirmed');
         acknowledge(c, expected[i]);
@@ -58,11 +55,23 @@ test('Five spaced hardware changes request the restored 20, 50, 75, 100, 0 prese
     assert(!settings.value && writes.join() === expected.join(), 'manual sequence changed Auto incorrectly');
 });
 
+test('Quick Fn+Space presses are each kept, with no press lost', () => {
+    const {c, settings, writes, popups} = fixture(false, 0);
+    // Presses about half a second apart used to fall inside the settle
+    // window, leaving the firmware's 0 on screen out of sequence.
+    for (const level of [20, 75, 0, 20]) {
+        c._onActualLevel(level);
+        acknowledge(c, level);
+    }
+    assert(!settings.value && writes.join() === '20,75,0,20' && popups.join() === '20,75,0,20',
+        'a quick press was lost or remapped');
+});
+
 test('A forwarded firmware signal does not advance the cycle twice', () => {
     const {c, writes} = fixture(false, 20);
     c._onActualLevel(75);
     c._onProxySignal('BrightnessChanged', new GLib.Variant('(is)', [75, 'internal']));
-    assert(writes.join() === '50', 'one hardware event advanced multiple times');
+    assert(writes.join() === '75', 'one hardware event advanced multiple times');
 });
 
 test('Manual slider selection turns software Auto off and writes the selected value', () => {
@@ -111,7 +120,7 @@ test('Fn+Space still takes manual control while the desktop is dimmed', () => {
     c._isDimming = () => true;
     c._onPowerSignal(30, 'external');
     c._onActualLevel(75);
-    assert(!settings.value && writes.join() === '50',
+    assert(!settings.value && writes.join() === '75',
         'idle handling swallowed a real hardware brightness change');
 });
 
@@ -130,9 +139,9 @@ test('Power notifications preserve manual mode and ignore own writes and hardwar
 test('Numeric keyboard popup is emitted once for a confirmed preset', () => {
     const {c, popups} = fixture(false, 20);
     c._onActualLevel(75);
-    acknowledge(c, 50);
-    c._onActualLevel(50);
-    assert(popups.join() === '50', 'duplicate or incorrect popup');
+    acknowledge(c, 75);
+    c._onActualLevel(75);
+    assert(popups.join() === '75', 'duplicate or incorrect popup');
 });
 
 test('A stale hardware read cannot overwrite a newer desktop brightness notification', () => {
@@ -160,7 +169,7 @@ test('A stale hardware read cannot overwrite a newer desktop brightness notifica
         c._file.load_contents_finish = () => [true, new TextEncoder().encode('75')];
         c._pollActual();
         completeRead();
-        assert(!settings.value && writes.join() === '50',
+        assert(!settings.value && writes.join() === '75',
             'a fresh manual change after the discarded sample was ignored');
     }
 });
@@ -465,7 +474,7 @@ test('Idle fade writes are not mistaken for Fn+Space', () => {
         'idle fade advanced a preset or turned Auto off');
 });
 
-test('Fn+Space from an Auto level advances exactly one preset in either detection order', () => {
+test('Fn+Space from an Auto level keeps the firmware level in either detection order', () => {
     for (const pollFirst of [true, false]) {
         const {c, settings, writes} = fixture(true, 37);
         if (pollFirst) {
@@ -475,8 +484,8 @@ test('Fn+Space from an Auto level advances exactly one preset in either detectio
             c._onProxySignal('BrightnessChanged', new GLib.Variant('(is)', [75, 'internal']));
             c._onActualLevel(75);
         }
-        assert(!settings.value && writes.join() === '50',
-            `one press did not give one preset (${pollFirst ? 'poll' : 'signal'} first)`);
+        assert(!settings.value && writes.join() === '75',
+            `one press did not give one level (${pollFirst ? 'poll' : 'signal'} first)`);
     }
 });
 

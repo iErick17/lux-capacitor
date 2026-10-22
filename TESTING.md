@@ -35,7 +35,7 @@ This is the checklist I use for a clean-install hardware test on each supported 
 3. Install as the desktop user, log out and back in, and confirm the extension is enabled.
 4. Cover/uncover the sensor in several lighting conditions. Check smooth screen updates and numeric feedback.
 5. Adjust the screen slider in dim light, then move to brighter light and confirm the screen never gets dimmer. Confirm stored preferences survive login, and that toggling screen Auto off resets them.
-6. Toggle keyboard Auto. Press Fn+Space repeatedly, including quickly, and confirm it steps 0/20/75/100 with no flicker and no repeated level.
+6. Toggle keyboard Auto. Test hotkeys, including quick presses, and the manual 0/20/50/75/100 presets.
 7. Let the desktop idle-dim, then resume activity. Confirm keyboard Auto stays enabled.
 8. Suspend/resume, including one long suspend. Repeat steps 4–6.
 9. Disable and enable the extension. Check that native GNOME controls work while disabled.

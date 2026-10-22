@@ -44,9 +44,7 @@ const AUTO_CURVE = [
     [30, 0],
 ];
 
-// The Framework EC's own Fn+Space cycle. Software step keys follow it too,
-// so every manual step lands on a level the firmware also uses.
-export const MANUAL_LEVELS = Object.freeze([0, 20, 75, 100]);
+export const MANUAL_LEVELS = Object.freeze([0, 20, 50, 75, 100]);
 
 function clampLevel(level) {
     return Math.max(0, Math.min(100, Math.round(level)));
@@ -130,6 +128,7 @@ export class KeyboardController {
         this._writeSerial = 0;
         this._desiredWrite = null;
         this._settleUntil = 0;
+        this._settleLevel = null;
         this._lastFirmwareEvent = null;
         this._busChangeUntil = 0;
         this._resumeGuardUntil = 0;
@@ -377,12 +376,16 @@ export class KeyboardController {
         this._onAutoSettingChanged();
     }
 
-    setManualLevel(level, showOSD = false, reason = 'manual slider') {
+    // staleLevel is the firmware level a hotkey left behind. Until the
+    // remapped preset lands it can still be read, so only that level is
+    // ignored while settling; any other change is another key press.
+    setManualLevel(level, showOSD = false, reason = 'manual slider', staleLevel = null) {
         const next = validLevel(level);
         this.setAutoEnabled(false, reason);
         this._pendingManualOSD = showOSD ? next : null;
         this._smoothLevel = next;
         this._settleUntil = GLib.get_monotonic_time() + HOTKEY_SETTLE_US;
+        this._settleLevel = staleLevel;
         this._requestWrite(next);
     }
 
@@ -541,11 +544,6 @@ export class KeyboardController {
                 this._lastFirmwareEvent = null;
                 return;
             }
-            if (source === 'internal') {
-                this._lastFirmwareEvent = {at: GLib.get_monotonic_time(), level: rawLevel};
-                this._acceptHardwareLevel(rawLevel, `keyboard signal internal: ${rawLevel}`);
-                return;
-            }
             let next;
             if (source === 'StepDown')
                 next = previousLevel(before);
@@ -553,7 +551,8 @@ export class KeyboardController {
                 next = before >= 100 ? 100 : nextLevel(before);
             else
                 next = nextLevel(before);
-            this.setManualLevel(next, false, `keyboard signal ${source}: ${rawLevel}`);
+            this.setManualLevel(next, source === 'internal', `keyboard signal ${source}: ${rawLevel}`,
+                rawLevel);
             return;
         }
 
@@ -563,24 +562,11 @@ export class KeyboardController {
         this._changed();
     }
 
-    // The EC applies Fn+Space itself. Keep the level it chose instead of
-    // overriding it, which would briefly show the firmware level first.
-    // Writing the same level back keeps GNOME's cached value in step, so
-    // idle dimming restores the right level; nothing visibly changes.
-    _acceptHardwareLevel(level, reason) {
-        this.setAutoEnabled(false, reason);
-        this._pendingManualOSD = level;
-        this._smoothLevel = level;
-        this._currentLevel = level;
-        this._lastActual = level;
-        this._requestWrite(level);
-        this._changed();
-    }
-
     _acceptManual(level) {
         this._pendingManualOSD = null;
         this.setAutoEnabled(false, `GNOME brightness property: ${level}`);
         this._settleUntil = GLib.get_monotonic_time() + HOTKEY_SETTLE_US;
+        this._settleLevel = null;
         this._smoothLevel = level;
         this._lastRequested = level;
         this._currentLevel = level;
@@ -680,8 +666,9 @@ export class KeyboardController {
             return;
         }
 
-        if (level === this._currentLevel || this._hasOwnWrite(level) ||
-            GLib.get_monotonic_time() < this._settleUntil ||
+        const settling = GLib.get_monotonic_time() < this._settleUntil &&
+            (this._settleLevel === null || level === this._settleLevel);
+        if (level === this._currentLevel || this._hasOwnWrite(level) || settling ||
             GLib.get_monotonic_time() < this._busChangeUntil) {
             if (level === this._currentLevel)
                 this._changed();
@@ -695,7 +682,8 @@ export class KeyboardController {
                 at: GLib.get_monotonic_time(),
                 level,
             };
-            this._acceptHardwareLevel(level, `hardware change: ${previous} -> ${level}`);
+            const next = nextLevel(this._currentLevel ?? previous);
+            this.setManualLevel(next, true, `hardware change: ${previous} -> ${level}`, level);
         } else {
             this._currentLevel = level;
             this._changed();

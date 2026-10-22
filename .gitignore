@@ -4,3 +4,4 @@ SHA256SUMS
 tests/extension-fixture.mjs
 __pycache__/
 
+*.txt

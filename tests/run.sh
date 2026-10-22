@@ -6,12 +6,12 @@ temporary=$(mktemp -d)
 trap 'rm -rf -- "$temporary"; rm -f tests/extension-fixture.mjs' EXIT
 for script in install.sh setup.sh install-resume-hook.sh; do bash -n "$script"; done
 sh -n 90-restart-iio-sensor-proxy
-cp lux-capacitor@ierick17.github.io/schemas/*.xml "$temporary/"
+cp lux-capacitor@extensions/schemas/*.xml "$temporary/"
 glib-compile-schemas --strict "$temporary"
 python3 - <<'PY'
 from pathlib import Path
 import json
-root = Path('lux-capacitor@ierick17.github.io')
+root = Path('lux-capacitor@extensions')
 metadata = json.loads((root / 'metadata.json').read_text())
 assert metadata['uuid'] == root.name
 assert metadata['shell-version'] == ['50']
@@ -20,8 +20,8 @@ for original, replacement in {
     "import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';": 'class Extension {}',
     "import * as Main from 'resource:///org/gnome/shell/ui/main.js';": 'export const Main = {};',
     "import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';": 'const PopupMenu = {};',
-    "'./brightnessModel.js'": "'../lux-capacitor@ierick17.github.io/brightnessModel.js'",
-    "'./keyboardController.js'": "'../lux-capacitor@ierick17.github.io/keyboardController.js'",
+    "'./brightnessModel.js'": "'../lux-capacitor@extensions/brightnessModel.js'",
+    "'./keyboardController.js'": "'../lux-capacitor@extensions/keyboardController.js'",
 }.items():
     assert original in source, original
     source = source.replace(original, replacement)

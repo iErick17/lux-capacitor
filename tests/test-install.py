@@ -10,7 +10,7 @@ import sys
 import tarfile
 import tempfile
 
-UUID = 'lux-capacitor@ierick17.github.io'
+UUID = 'lux-capacitor@extensions'
 assert os.geteuid() != 0, 'Run as a normal user (or runuser -u nobody in a container)'
 artifact = pathlib.Path(sys.argv[1]).resolve()
 payload = artifact.read_bytes().split(b'__AUTO_BRIGHTNESS_PAYLOAD__\n', 1)[1]
@@ -95,20 +95,22 @@ media = Gio.Settings.new('org.gnome.settings-daemon.plugins.media-keys')
     assert (target / 'extension.js').read_bytes() == (source / UUID / 'extension.js').read_bytes()
     print('PASS: upgrade preserves manual settings and calibration and backs up the previous extension')
 
-    # Releases up to 0.1.2 used another extension ID; upgrading must replace it.
-    legacy_uuid = 'adaptive-brightness-v2@codex.local'
-    legacy = root / 'data/gnome-shell/extensions' / legacy_uuid
-    legacy.mkdir(parents=True)
-    (legacy / 'extension.js').write_text('// legacy extension\n')
-    settings(f"shell.set_strv('enabled-extensions', ['{legacy_uuid}', 'other@example.com'])\nGio.Settings.sync()\n")
+    # Earlier releases used other extension IDs; upgrading must replace both.
+    legacy_uuids = ['adaptive-brightness-v2@codex.local', 'lux-capacitor@ierick17.github.io']
+    legacies = [root / 'data/gnome-shell/extensions' / name for name in legacy_uuids]
+    for legacy in legacies:
+        legacy.mkdir(parents=True)
+        (legacy / 'extension.js').write_text(f'// {legacy.name}\n')
+    settings(f"shell.set_strv('enabled-extensions', {legacy_uuids + ['other@example.com']!r})\nGio.Settings.sync()\n")
     migrated = install()
     assert migrated.returncode == 0, migrated.stdout + migrated.stderr
-    assert not legacy.exists(), 'Previous extension ID was left installed'
+    assert not any(legacy.exists() for legacy in legacies), 'A previous extension ID was left installed'
     enabled = json.loads(settings("print(json.dumps(shell.get_strv('enabled-extensions')))"))
-    assert legacy_uuid not in enabled and UUID in enabled and 'other@example.com' in enabled, enabled
+    assert not set(legacy_uuids) & set(enabled) and UUID in enabled and 'other@example.com' in enabled, enabled
     state = json.loads(settings("print(json.dumps(brightness.get_string('anchors')))"))
     assert state == '[{"lux":40,"brightness":0.7}]', 'Settings were lost when the extension ID changed'
-    backups = list((root / 'state/adaptive-brightness').glob('*/legacy-extension/extension.js'))
-    assert any(p.read_text() == '// legacy extension\n' for p in backups), 'Previous extension ID was not backed up'
-    print('PASS: upgrade from the previous extension ID removes it, keeps settings, and backs it up')
+    for name in legacy_uuids:
+        backups = list((root / 'state/adaptive-brightness').glob(f'*/legacy-extension-{name}/extension.js'))
+        assert any(p.read_text() == f'// {name}\n' for p in backups), f'{name} was not backed up'
+    print('PASS: upgrade from both previous extension IDs removes them, keeps settings, and backs them up')
     print('NOTE: package installation, privileged resume-hook installation, and live GNOME Shell activation were mocked; no physical hardware was tested.')

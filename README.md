@@ -22,7 +22,9 @@ I installed this repeatedly on the same Framework laptop while switching between
 
 ## Features
 
-- Smooth screen brightness changes and learned manual preferences at observed light levels.
+- Smooth screen brightness changes and learned manual preferences at observed light levels. Learned preferences never make the screen dimmer as the room gets brighter, and a newer choice replaces a nearby one that contradicts it.
+- Small light-sensor fluctuations are ignored, so the screen only moves when the light really changes.
+- Learned preferences persist across logins and reboots. Turning screen Auto off resets them to the default curve.
 - Separate screen and keyboard Auto controls.
 - Manual keyboard presets: 0%, 20%, 50%, 75%, 100%.
 - Numeric brightness and volume displays, with brightness and volume OSD bars updating immediately as the Quick Settings sliders move; volume keys use steps of 5.

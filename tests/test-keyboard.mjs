@@ -2,7 +2,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
-import {KeyboardController, automaticKeyboardTarget} from '../lux-capacitor@extensions/keyboardController.js';
+import {KeyboardController, automaticKeyboardTarget, fromHardware, toHardware} from '../lux-capacitor@extensions/keyboardController.js';
 import Extension, {Main} from './extension-fixture.mjs';
 
 function assert(value, message) {
@@ -549,6 +549,94 @@ test('Resetting learned brightness from the settings window reaches the extensio
         'external reset was ignored or overwritten');
     e._saveAnchors();
     assert(e._anchors.length === 0 && values.anchors === '[]', 'own save reloaded preferences');
+});
+
+test('100% is written as 99%, so Fn+Space cannot lock the light off from it', () => {
+    // Recorded on the Framework EC: a press from exactly 100% locks the
+    // light off and reverts host writes; the same press from 99% does not.
+    assert(toHardware(100) === 99 && toHardware(75) === 75 && toHardware(0) === 0,
+        'wrong hardware level');
+    assert(fromHardware(99) === 100 && fromHardware(100) === 100 && fromHardware(50) === 50,
+        'wrong reading');
+    const {c, settings, writes} = fixture(false, 0);
+    c.setManualLevel(99);
+    assert(writes.join() === '100', 'a 99% request was not treated as 100%');
+    c._onProxySignal('BrightnessChanged', new GLib.Variant('(is)', [99, 'set property']));
+    assert(c.currentLevel === 100 && !settings.value, 'the 99% echo of a 100% write was not recognized');
+    let completeRead;
+    c._file = {
+        load_contents_async(_cancel, callback) { completeRead = () => callback(this, {}); },
+        load_contents_finish() { return [true, new TextEncoder().encode('99')]; },
+    };
+    c._settleUntil = 0;
+    c._pollActual();
+    completeRead();
+    assert(c.currentLevel === 100 && writes.length === 1, 'a 99% reading was taken for a key press');
+});
+
+test('A firmware override of a manual write is shown, not taken for Fn+Space', () => {
+    const {c, settings, writes, popups} = fixture(false, 0);
+    c.toggleLight();
+    acknowledge(c, 100);
+    c._onActualLevel(100);
+    // The locked EC puts the light back off within the settle window.
+    c._onActualLevel(0);
+    assert(c.currentLevel === 100, 'the reading inside the settle window was not ignored');
+    c._settleUntil = 0;
+    c._onActualLevel(0);
+    assert(c.currentLevel === 0 && writes.join() === '100' && popups.length === 0 && !settings.value,
+        'the overridden level was not shown, or was taken for a key press');
+    // The next Fn+Space press still advances exactly one preset.
+    c._onActualLevel(20);
+    assert(writes.join() === '100,20', 'Fn+Space after an override did not give one preset');
+});
+
+test('The keyboard tile turns the light off and back on at the last chosen level', () => {
+    const {c, settings, writes} = fixture(true, 30);
+    c.toggleLight();
+    assert(!settings.value && writes.join() === '0', 'the tile did not turn Auto off and the light off');
+    acknowledge(c, 0);
+    c.toggleLight();
+    acknowledge(c, 100);
+    assert(writes.join() === '0,100', 'with no chosen level the tile did not use 100%');
+    c.setManualLevel(50);
+    acknowledge(c, 50);
+    c.toggleLight();
+    acknowledge(c, 0);
+    c.toggleLight();
+    acknowledge(c, 50);
+    assert(writes.join() === '0,100,50,0,50' && c.currentLevel === 50,
+        'the tile did not come back at the last chosen level');
+});
+
+test('The keyboard tile click goes through the controller and is restored on disable', () => {
+    const Control = GObject.registerClass({Properties: {
+        value: GObject.ParamSpec.int('value', null, null, GObject.ParamFlags.READWRITE, 0, 100, 0),
+    }}, class TileControl extends GObject.Object {
+        _init() { super._init(); this._value = 0; }
+        get value() { return this._value; }
+        set value(v) { this._value = v; this.notify('value'); }
+    });
+    const Tile = GObject.registerClass({Signals: {clicked: {}}},
+        class KeyboardTile extends GObject.Object {});
+    const slider = new Control();
+    const discrete = new Control();
+    slider._slider = {connect: () => 1, disconnect() {}};
+    const item = new Tile();
+    Object.assign(item, {_sliderItem: slider, _discreteItem: discrete, subtitle: 'native',
+        _sliderItemChangedId: slider.connect('notify::value', () => {}),
+        _discreteItemChangedId: discrete.connect('notify::value', () => {})});
+    let nativeClicks = 0;
+    item.connect('clicked', () => nativeClicks++);
+    let toggles = 0;
+    const e = new Extension();
+    Object.assign(e, {_keyboard: {toggleLight: () => toggles++}, _keyboardQuickItem: item});
+    e._installKeyboardManualHandlers(item);
+    item.emit('clicked');
+    assert(toggles === 1 && nativeClicks === 0, 'the tile click still wrote directly');
+    e._restoreKeyboardManualHandlers();
+    item.emit('clicked');
+    assert(toggles === 1 && nativeClicks === 1, 'disable did not restore the native tile click');
 });
 
 for (const name of ['extension.js', 'keyboardController.js', 'brightnessModel.js', 'prefs.js']) {

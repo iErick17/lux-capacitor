@@ -2,7 +2,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
-import {advanceBrightness} from './brightnessModel.js';
+import {advanceBrightness, interpolateLogLux} from './brightnessModel.js';
 
 const BUS_NAME = 'org.gnome.SettingsDaemon.Power';
 const OBJECT_PATH = '/org/gnome/SettingsDaemon/Power';
@@ -49,6 +49,17 @@ const AUTO_CURVE = [
 
 export const MANUAL_LEVELS = Object.freeze([0, 20, 50, 75, 100]);
 
+function removeSource(id) {
+    if (id)
+        GLib.source_remove(id);
+    return 0;
+}
+
+/** Whether a reported keyboard brightness is a valid 0-100 percentage. */
+export function isLevel(level) {
+    return Number.isInteger(level) && level >= 0 && level <= 100;
+}
+
 function clampLevel(level) {
     return Math.max(0, Math.min(100, Math.round(level)));
 }
@@ -75,19 +86,7 @@ function previousLevel(current) {
 export function keyboardTarget(lux) {
     if (!Number.isFinite(lux) || lux < 0)
         throw new RangeError('lux must be a finite nonnegative number');
-
-    for (let i = 1; i < AUTO_CURVE.length; i++) {
-        const [rightLux, rightLevel] = AUTO_CURVE[i];
-        if (lux <= rightLux) {
-            const [leftLux, leftLevel] = AUTO_CURVE[i - 1];
-            const x = Math.log1p(lux);
-            const leftX = Math.log1p(leftLux);
-            const rightX = Math.log1p(rightLux);
-            return leftLevel + (rightLevel - leftLevel) *
-                (x - leftX) / (rightX - leftX);
-        }
-    }
-    return 0;
+    return interpolateLogLux(AUTO_CURVE, lux);
 }
 
 /** Keep the light off until it is quite dark, with a gap to prevent flicker. */
@@ -212,12 +211,8 @@ export class KeyboardController {
         this._generation++;
         this._stopRamp();
         this._stopWakeHold();
-        if (this._pollId)
-            GLib.source_remove(this._pollId);
-        this._pollId = 0;
-        if (this._retryId)
-            GLib.source_remove(this._retryId);
-        this._retryId = 0;
+        this._pollId = removeSource(this._pollId);
+        this._retryId = removeSource(this._retryId);
         if (this._settingsId)
             this._settings.disconnect(this._settingsId);
         this._settingsId = 0;
@@ -274,9 +269,7 @@ export class KeyboardController {
     }
 
     _stopWakeHold() {
-        if (this._wakeHoldId)
-            GLib.source_remove(this._wakeHoldId);
-        this._wakeHoldId = 0;
+        this._wakeHoldId = removeSource(this._wakeHoldId);
         this._waitingForWakeLux = false;
     }
 
@@ -463,8 +456,7 @@ export class KeyboardController {
             return;
         this._notificationSerial++;
         const level = this._proxy.Brightness;
-        const available = !!this._proxy.get_name_owner() &&
-            Number.isInteger(level) && level >= 0 && level <= 100;
+        const available = !!this._proxy.get_name_owner() && isLevel(level);
         this._available = available;
         if (available) {
             const actual = this._lastActual;
@@ -507,7 +499,7 @@ export class KeyboardController {
         if (!this._enabled || signal !== 'BrightnessChanged')
             return;
         const [rawLevel, source] = parameters.deep_unpack();
-        if (!Number.isInteger(rawLevel) || rawLevel < 0 || rawLevel > 100)
+        if (!isLevel(rawLevel))
             return;
         this._notificationSerial++;
 
@@ -578,8 +570,7 @@ export class KeyboardController {
     }
 
     _onPowerSignal(level, source) {
-        if (!this._enabled || source !== 'external' ||
-            !Number.isInteger(level) || level < 0 || level > 100)
+        if (!this._enabled || source !== 'external' || !isLevel(level))
             return;
         this._notificationSerial++;
         if (this._hasOwnWrite(level))
@@ -826,9 +817,7 @@ export class KeyboardController {
     }
 
     _stopRamp() {
-        if (this._rampId)
-            GLib.source_remove(this._rampId);
-        this._rampId = 0;
+        this._rampId = removeSource(this._rampId);
     }
 
     _changed() {

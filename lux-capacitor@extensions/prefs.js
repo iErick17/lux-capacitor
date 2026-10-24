@@ -5,7 +5,7 @@ import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
-import {limitedCurve, normalizePreferences, preferredBrightness} from './brightnessModel.js';
+import {limitedCurve, parseAnchors, preferredBrightness} from './brightnessModel.js';
 
 const SPEEDS = [['subtle', 'Subtle'], ['normal', 'Normal'], ['fast', 'Fast']];
 const SENSITIVITIES = [['low', 'Low'], ['normal', 'Normal'], ['high', 'High']];
@@ -21,27 +21,31 @@ function track(object, signal, callback) {
 }
 
 // Bind a ComboRow to a settings key through a fixed list of [value, label].
-function comboRow(settings, key, title, subtitle, choices, read, write) {
+// Numeric values are stored as integers, all others as strings.
+function comboRow(settings, key, title, subtitle, choices) {
+    const numeric = typeof choices[0][0] === 'number';
+    const read = () => numeric ? settings.get_int(key) : settings.get_string(key);
+    const write = value => numeric ? settings.set_int(key, value) : settings.set_string(key, value);
     const row = new Adw.ComboRow({
         title, subtitle,
         model: Gtk.StringList.new(choices.map(([, label]) => label)),
     });
     const sync = () => {
-        const index = choices.findIndex(([value]) => value === read(key));
+        const index = choices.findIndex(([value]) => value === read());
         row.selected = Math.max(0, index);
     };
     sync();
     row.connect('notify::selected', () => {
         const [value] = choices[row.selected] ?? choices[0];
-        if (value !== read(key))
-            write(key, value);
+        if (value !== read())
+            write(value);
     });
     track(settings, `changed::${key}`, sync);
     return row;
 }
 
-function percentRow(settings, key, title, subtitle, onChanged = () => {}) {
-    const row = Adw.SpinRow.new_with_range(0, 100, 1);
+function spinRow(settings, key, title, subtitle, min, max, onChanged = () => {}) {
+    const row = Adw.SpinRow.new_with_range(min, max, 1);
     Object.assign(row, {title, subtitle});
     const sync = () => {
         row.value = settings.get_int(key);
@@ -56,18 +60,6 @@ function percentRow(settings, key, title, subtitle, onChanged = () => {}) {
     });
     track(settings, `changed::${key}`, sync);
     return row;
-}
-
-function readAnchors(settings) {
-    try {
-        const anchors = JSON.parse(settings.get_string('anchors'));
-        return Array.isArray(anchors)
-            ? normalizePreferences(anchors.filter(a => Number.isFinite(a?.lux) &&
-                a.lux >= 0 && Number.isFinite(a?.brightness)))
-            : [];
-    } catch {
-        return [];
-    }
 }
 
 function curveGraph(settings) {
@@ -87,7 +79,7 @@ function curveGraph(settings) {
             min: settings.get_int('screen-min-brightness') / 100,
             max: settings.get_int('screen-max-brightness') / 100,
         };
-        const anchors = readAnchors(settings);
+        const anchors = parseAnchors(settings.get_string('anchors'));
         const plot = brightness => {
             for (let px = 0; px <= width; px += 2) {
                 const lux = Math.expm1(px / width * Math.log1p(GRAPH_MAX_LUX));
@@ -156,27 +148,23 @@ export default class LuxCapacitorPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
         window._settings = settings;
-        const getString = key => settings.get_string(key);
-        const setString = (key, value) => settings.set_string(key, value);
-        const getInt = key => settings.get_int(key);
-        const setInt = (key, value) => settings.set_int(key, value);
         const page = new Adw.PreferencesPage();
 
         const screen = new Adw.PreferencesGroup({title: 'Screen'});
         screen.add(comboRow(settings, 'transition-speed', 'Transition speed',
-            'How quickly the screen follows the light', SPEEDS, getString, setString));
+            'How quickly the screen follows the light', SPEEDS));
         screen.add(comboRow(settings, 'light-sensitivity', 'Light sensitivity',
             'How much the light must change first: Low ≈30%, Normal ≈15%, High ≈7%',
-            SENSITIVITIES, getString, setString));
-        screen.add(percentRow(settings, 'screen-min-brightness', 'Minimum brightness',
+            SENSITIVITIES));
+        screen.add(spinRow(settings, 'screen-min-brightness', 'Minimum brightness',
             'Lower limit for Auto\'s default curve, in percent. Your own adjustments still apply',
-            value => {
+            0, 100, value => {
                 if (value > settings.get_int('screen-max-brightness'))
                     settings.set_int('screen-max-brightness', value);
             }));
-        screen.add(percentRow(settings, 'screen-max-brightness', 'Maximum brightness',
+        screen.add(spinRow(settings, 'screen-max-brightness', 'Maximum brightness',
             'Upper limit for Auto\'s default curve, in percent. Your own adjustments still apply',
-            value => {
+            0, 100, value => {
                 if (value < settings.get_int('screen-min-brightness'))
                     settings.set_int('screen-min-brightness', value);
             }));
@@ -205,20 +193,10 @@ export default class LuxCapacitorPreferences extends ExtensionPreferences {
                 'and turn keyboard Auto off.'});
         keyboard.add(comboRow(settings, 'keyboard-idle-timeout', 'Turn off when idle',
             'Only Auto\'s light; comes back on input',
-            IDLE_TIMEOUTS, getInt, setInt));
-        const dark = Adw.SpinRow.new_with_range(1, 200, 1);
-        Object.assign(dark, {title: 'Dark threshold',
-            subtitle: 'Auto lights the keyboard below this many lux, and turns it off above 2.5× this'});
-        dark.value = settings.get_int('keyboard-dark-lux');
-        dark.connect('notify::value', () => {
-            const value = Math.round(dark.value);
-            if (value !== settings.get_int('keyboard-dark-lux'))
-                settings.set_int('keyboard-dark-lux', value);
-        });
-        track(settings, 'changed::keyboard-dark-lux', () => {
-            dark.value = settings.get_int('keyboard-dark-lux');
-        });
-        keyboard.add(dark);
+            IDLE_TIMEOUTS));
+        keyboard.add(spinRow(settings, 'keyboard-dark-lux', 'Dark threshold',
+            'Auto lights the keyboard below this many lux, and turns it off above 2.5× this',
+            1, 200));
         const resetKeyboard = new Adw.ButtonRow({title: 'Reset Keyboard Settings'});
         resetKeyboard.connect('activated', () => {
             for (const key of KEYBOARD_KEYS)

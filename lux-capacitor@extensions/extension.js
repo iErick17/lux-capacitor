@@ -482,15 +482,13 @@ export default class AdaptiveBrightnessExtension extends Extension {
             return;
         item.checked = level > 0;
         item.subtitle = `${level}%`;
-        // Pointer input owns the thumb during a drag. After release, keep
-        // showing the selected target until the physical fade completes.
+        // Pointer input owns the thumb during a drag.
         if (this._keyboardDragging)
             return;
-        const sliderLevel = this._keyboard.manualTarget ?? level;
         item._sliderItem.block_signal_handler(item._sliderItemChangedId);
         item._discreteItem.block_signal_handler(item._discreteItemChangedId);
         try {
-            item._sliderItem.value = sliderLevel;
+            item._sliderItem.value = level;
         } finally {
             item._discreteItem.unblock_signal_handler(item._discreteItemChangedId);
             item._sliderItem.unblock_signal_handler(item._sliderItemChangedId);
@@ -906,10 +904,10 @@ export default class AdaptiveBrightnessExtension extends Extension {
             this._keyboardDragging = false;
             this._syncKeyboardToggle();
         });
-        // GNOME's own property-change callback also moves the thumb. Its
-        // intermediate fade acknowledgements must not override user input.
+        // GNOME's own property-change callback also moves the thumb, so it
+        // must not run while the user drags the slider.
         this._restoreKeyboardSync = patchMethod(item, '_sync', original => () => {
-            if (!this._keyboardDragging && this._keyboard?.manualTarget == null)
+            if (!this._keyboardDragging)
                 original.call(item);
             this._syncKeyboardToggle();
         });

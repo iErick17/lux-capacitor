@@ -20,6 +20,14 @@ Version 0.2.3 adds GNOME Shell 51 (Fedora 45). GNOME 51 refused to load 0.2.2 on
 
 Version 0.2.4 simplifies the code without changing behavior: repeated code now shares helpers, and the screen and keyboard curves share one calculation. The keyboard hotkey and fade logic is unchanged. Before release, the old and new code gave the same screen brightness, keyboard levels, settings window behavior, and restored GNOME functions. On 2026-10-23 I tested 0.2.4 on my Framework Laptop 13 with Fedora Workstation 45 and GNOME Shell 51.0, and everything worked as before: screen Auto following the light sensor, learning from the screen slider, 5% brightness key steps with numeric popups, the numeric volume popup, Fn+Space stepping through 0, 20, 50, 75 and 100 and turning keyboard Auto off, keyboard Auto fades, both Quick Settings Auto switches and the keyboard slider, lock and unlock, suspend and resume, and the settings window graph, options and reset buttons.
 
+Version 0.2.5 fixes the Keyboard tile, which turned keyboard Auto off without lighting the keyboard. On 2026-10-23 I recorded the keyboard level every 20 ms together with the settings daemon, UPower and setting changes on my Framework Laptop 13 (Fedora Workstation 45, GNOME Shell 51.0, BIOS 04.02), and tested the firmware directly with the extension disabled:
+
+- When Fn+Space turns the light off from exactly 100%, the firmware locks it off. Until the next Fn+Space press it puts the light back off within about 25–200 ms after every write, whether through the settings daemon, UPower or logind, and with the Framework Control service stopped. The kernel driver only passes the level through, so this happens in the firmware.
+- The same press from 99% turns the light off without locking, and a software write of 0 never locks. Lux Capacitor now writes 100% as 99%.
+- The Keyboard tile wrote 100% directly, bypassing Lux Capacitor, and the extension kept showing the light as on when the firmware put it back off. The tile now goes through Lux Capacitor like Fn+Space and the slider, turns the light back on at the last level chosen, and the display follows the real level if the firmware overrides a write.
+
+With 0.2.5 installed, the tile turned the light on after keyboard Auto, after Fn+Space had turned it off, and off and on repeatedly. The slider at 100% and at a middle level stayed lit, Fn+Space still gave one step per press, and the recording showed no overridden writes and no write of exactly 100%.
+
 Not yet checked on hardware for 0.2.x: dimming on battery, the keyboard idle timeout, and anything on Ubuntu.
 
 My laptop is a Framework Laptop 13 (AMD Ryzen AI 300 Series), currently running Fedora Workstation 45 with GNOME Shell 51.0. I've also used it with Fedora Workstation 44 (GNOME Shell 50.6) and Ubuntu 26.04.1 (GNOME Shell 50). I haven't tested other Framework models. On Fedora Workstation 44 I confirmed the following on 2026-10-11:

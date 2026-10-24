@@ -12,7 +12,7 @@ Lux Capacitor adjusts brightness to ambient light, adds separate screen and keyb
 
 | System | Validation |
 | --- | --- |
-| Framework Laptop 13 (AMD Ryzen AI 300 Series), Fedora Workstation 45, GNOME Shell 51 | v0.2.4: I checked screen Auto and learning, the brightness keys, volume, Fn+Space, keyboard Auto, Quick Settings, lock, suspend and resume, and the settings window on my laptop. The automated checks pass on Fedora 45. |
+| Framework Laptop 13 (AMD Ryzen AI 300 Series), Fedora Workstation 45, GNOME Shell 51 | v0.2.5: I recorded the Keyboard tile, the keyboard slider, Fn+Space and keyboard Auto on my laptop. v0.2.4: I checked screen Auto and learning, the brightness keys, volume, Quick Settings, lock, suspend and resume, and the settings window. The automated checks pass on Fedora 45. |
 | Framework Laptop 13 (AMD Ryzen AI 300 Series), Fedora Workstation 44, GNOME Shell 50 | v0.2.1: I recorded keyboard Auto and Fn+Space on my laptop and confirmed them. Earlier versions: screen brightness, keyboard controls, and recovery after suspend. |
 | Framework Laptop 13 (AMD Ryzen AI 300 Series), Ubuntu 26.04.1, GNOME Shell 50 | I used it on my laptop up to v0.1.2. I haven't tested v0.2.x on Ubuntu hardware yet; the automated checks pass. |
 | Other Framework models | I haven't tested these yet. They need compatible light-sensor and keyboard-backlight interfaces. |
@@ -75,7 +75,9 @@ To teach screen Auto, keep it on and move the brightness slider or press the bri
 | Dark threshold | Keyboard Auto turns the light on when the room is darker than this many lux, and off again once it is 2.5 times brighter (25 lux by default); the gap prevents flickering. The keyboard brightness curve scales with it. | 10 lux |
 | Reset Keyboard Settings | Sets the idle timeout back to Off and the dark threshold back to 10 lux. | — |
 
-Fn+Space steps through 0%, 20%, 50%, 75%, and 100%. Fn+Space and the Quick Settings keyboard slider both set a manual level and turn keyboard Auto off; turn it back on with the Auto switch in Quick Settings. The screen and keyboard Auto switches are independent.
+Fn+Space steps through 0%, 20%, 50%, 75%, and 100%. Fn+Space, the Quick Settings keyboard slider, and the Keyboard tile all set a manual level and turn keyboard Auto off; turn it back on with the Auto switch in Quick Settings. Clicking the Keyboard tile turns the light off, or back on at the last level you chose (100% until you choose one). The screen and keyboard Auto switches are independent.
+
+The Framework firmware locks the keyboard light off when Fn+Space turns it off from exactly 100%: until the next Fn+Space press it overrides every other change. Lux Capacitor therefore sets 100% as 99%, which looks the same, so the lock doesn't happen. If you press Fn+Space twice very quickly from 75%, the firmware can still reach 100% and lock before Lux Capacitor corrects it; the keyboard then shows as off, and one more Fn+Space press turns it back on.
 
 ## Install
 

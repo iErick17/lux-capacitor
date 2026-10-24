@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -925,6 +926,13 @@ export default class AdaptiveBrightnessExtension extends Extension {
         });
         item._sliderItemChangedId = this._keyboardSliderId;
         item._discreteItemChangedId = this._keyboardDiscreteId;
+        // GNOME's tile click writes 0 or 100 straight to the power daemon.
+        // Route it through the controller like the slider, so it turns
+        // keyboard Auto off and its write is recognized as the extension's own.
+        this._keyboardOriginalClickedId = GObject.signal_handler_find(item, {signalId: 'clicked'});
+        if (this._keyboardOriginalClickedId)
+            item.block_signal_handler(this._keyboardOriginalClickedId);
+        this._keyboardClickedId = item.connect('clicked', () => this._keyboard?.toggleLight());
     }
 
     _restoreKeyboardManualHandlers() {
@@ -954,5 +962,11 @@ export default class AdaptiveBrightnessExtension extends Extension {
         }
         this._keyboardSliderId = 0;
         this._keyboardDiscreteId = 0;
+        if (this._keyboardClickedId)
+            item.disconnect(this._keyboardClickedId);
+        if (this._keyboardOriginalClickedId)
+            item.unblock_signal_handler(this._keyboardOriginalClickedId);
+        this._keyboardClickedId = 0;
+        this._keyboardOriginalClickedId = 0;
     }
 }

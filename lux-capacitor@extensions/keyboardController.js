@@ -48,6 +48,11 @@ const AUTO_CURVE = [
 ];
 
 export const MANUAL_LEVELS = Object.freeze([0, 20, 50, 75, 100]);
+// When Fn+Space steps the Framework EC from exactly 100% to off, the EC locks
+// the light off: until the next press it reverts every host write within
+// about 200 ms. The same press from 99% turns the light off without locking,
+// so 100% is written to the hardware as 99%, which looks the same.
+const HARDWARE_MAX = 99;
 
 function removeSource(id) {
     if (id)
@@ -60,6 +65,16 @@ export function isLevel(level) {
     return Number.isInteger(level) && level >= 0 && level <= 100;
 }
 
+/** The level to write to the hardware for a 0-100 keyboard brightness. */
+export function toHardware(level) {
+    return Math.min(level, HARDWARE_MAX);
+}
+
+/** The 0-100 keyboard brightness that a hardware reading stands for. */
+export function fromHardware(level) {
+    return level === HARDWARE_MAX ? 100 : level;
+}
+
 function clampLevel(level) {
     return Math.max(0, Math.min(100, Math.round(level)));
 }
@@ -67,7 +82,7 @@ function clampLevel(level) {
 function validLevel(level) {
     if (!Number.isFinite(level) || level < 0 || level > 100)
         throw new RangeError('keyboard brightness must be between 0 and 100');
-    return clampLevel(level);
+    return fromHardware(clampLevel(level));
 }
 
 function nextLevel(current) {
@@ -114,6 +129,9 @@ export class KeyboardController {
         this._isDimming = isDimming;
         this._wasDimming = false;
         this._pendingManualOSD = null;
+        // The keyboard tile turns the light back on at the last lit level
+        // chosen with Fn+Space, the slider or the tile.
+        this._lastLitLevel = 100;
         this._enabled = false;
         this._autoEnabled = settings.get_boolean('keyboard-auto-enabled');
         this._available = false;
@@ -377,12 +395,20 @@ export class KeyboardController {
     // ignored while settling; any other change is another key press.
     setManualLevel(level, showOSD = false, reason = 'manual slider', staleLevel = null) {
         const next = validLevel(level);
+        if (next > 0)
+            this._lastLitLevel = next;
         this.setAutoEnabled(false, reason);
         this._pendingManualOSD = showOSD ? next : null;
         this._smoothLevel = next;
         this._settleUntil = GLib.get_monotonic_time() + HOTKEY_SETTLE_US;
         this._settleLevel = staleLevel;
         this._requestWrite(next);
+    }
+
+    /** The Quick Settings tile: turn a lit keyboard off, or a dark one back on. */
+    toggleLight() {
+        const lit = (this._currentLevel ?? 0) > 0;
+        this.setManualLevel(lit ? 0 : this._lastLitLevel, false, 'keyboard tile');
     }
 
     _onAutoSettingChanged() {
@@ -426,7 +452,7 @@ export class KeyboardController {
                 this._propertiesId = proxy.connect('g-properties-changed',
                     () => {
                         this._notificationSerial++;
-                        if (!this._hasOwnWrite(proxy.Brightness))
+                        if (!this._hasOwnWrite(fromHardware(proxy.Brightness)))
                             this._busChangeUntil = GLib.get_monotonic_time() +
                                 300_000;
                     });
@@ -455,7 +481,7 @@ export class KeyboardController {
         if (!this._enabled || !this._proxy)
             return;
         this._notificationSerial++;
-        const level = this._proxy.Brightness;
+        const level = fromHardware(this._proxy.Brightness);
         const available = !!this._proxy.get_name_owner() && isLevel(level);
         this._available = available;
         if (available) {
@@ -498,9 +524,10 @@ export class KeyboardController {
     _onProxySignal(signal, parameters) {
         if (!this._enabled || signal !== 'BrightnessChanged')
             return;
-        const [rawLevel, source] = parameters.deep_unpack();
-        if (!isLevel(rawLevel))
+        const [hardwareLevel, source] = parameters.deep_unpack();
+        if (!isLevel(hardwareLevel))
             return;
+        const rawLevel = fromHardware(hardwareLevel);
         this._notificationSerial++;
 
         if (source === 'set property' && this._consumeOwnWrite(rawLevel)) {
@@ -560,6 +587,8 @@ export class KeyboardController {
     _acceptManual(level) {
         this._pendingManualOSD = null;
         this.setAutoEnabled(false, `GNOME brightness property: ${level}`);
+        if (level > 0)
+            this._lastLitLevel = level;
         this._settleUntil = GLib.get_monotonic_time() + HOTKEY_SETTLE_US;
         this._settleLevel = null;
         this._smoothLevel = level;
@@ -572,6 +601,7 @@ export class KeyboardController {
     _onPowerSignal(level, source) {
         if (!this._enabled || source !== 'external' || !isLevel(level))
             return;
+        level = fromHardware(level);
         this._notificationSerial++;
         if (this._hasOwnWrite(level))
             return;
@@ -609,7 +639,7 @@ export class KeyboardController {
                 const raw = new TextDecoder().decode(bytes).trim();
                 if (!/^(?:100|[1-9]?\d)$/.test(raw))
                     return;
-                level = Number(raw);
+                level = fromHardware(Number(raw));
             } catch (error) {
                 if (!this._cancellable?.is_cancelled())
                     console.error(`Lux Capacitor: keyboard read failed: ${error}`);
@@ -653,8 +683,10 @@ export class KeyboardController {
             }
             return;
         }
-        if (level === previous)
+        if (level === previous) {
+            this._showOverriddenLevel(level);
             return;
+        }
         if (GLib.get_monotonic_time() < this._resumeGuardUntil) {
             this._observeRestoredLevel(level);
             return;
@@ -682,6 +714,21 @@ export class KeyboardController {
             this._currentLevel = level;
             this._changed();
         }
+    }
+
+    // The EC can override a manual write (see HARDWARE_MAX), and the settle
+    // window ignores that reading. Once the window is over and no write is
+    // pending, show the level the keyboard really has instead of the request.
+    _showOverriddenLevel(level) {
+        if (this._autoEnabled || this._currentLevel === null || level === this._currentLevel ||
+            GLib.get_monotonic_time() < this._settleUntil ||
+            this._writeInFlight !== null || this._desiredWrite !== null)
+            return;
+        console.warn(`Lux Capacitor: keyboard stayed at ${level}% instead of ` +
+            `${this._currentLevel}%; the firmware overrode the write`);
+        this._currentLevel = level;
+        this._smoothLevel = level;
+        this._changed();
     }
 
     // Preserve numeric feedback while restoring the earlier control logic.
@@ -752,7 +799,7 @@ export class KeyboardController {
         Gio.DBus.session.call(BUS_NAME, OBJECT_PATH,
             'org.freedesktop.DBus.Properties', 'Set',
             new GLib.Variant('(ssv)', [INTERFACE, 'Brightness',
-                new GLib.Variant('i', level)]),
+                new GLib.Variant('i', toHardware(level))]),
             null, Gio.DBusCallFlags.NONE, -1, this._cancellable,
             (connection, result) => {
                 if (!this._enabled || generation !== this._generation ||

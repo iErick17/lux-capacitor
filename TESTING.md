@@ -28,7 +28,11 @@ Version 0.2.5 fixes the Keyboard tile, which turned keyboard Auto off without li
 
 With 0.2.5 installed, the tile turned the light on after keyboard Auto, after Fn+Space had turned it off, and off and on repeatedly. The slider at 100% and at a middle level stayed lit, Fn+Space still gave one step per press, and the recording showed no overridden writes and no write of exactly 100%.
 
-Not yet checked on hardware for 0.2.x: dimming on battery, the keyboard idle timeout, and anything on Ubuntu.
+On 2026-10-23 I also tested the keyboard idle timeout with 0.2.5 (30 seconds, sensor covered so keyboard Auto lit the keyboard at about 55%). The light faded out 30 seconds after my last input, came back when I pressed Shift, and faded out again when I uncovered the sensor.
+
+Dimming on battery doesn't work in 0.2.5 ([issue #6](https://github.com/iErick17/lux-capacitor/issues/6)). Screen Auto used the same brightness on battery as on AC, including right after restarting the extension on battery. The screen does look dimmer on battery, but that comes from AMD panel power savings, which Fedora's battery power profile turns on.
+
+Not yet checked on hardware for 0.2.x: anything on Ubuntu.
 
 My laptop is a Framework Laptop 13 (AMD Ryzen AI 300 Series), currently running Fedora Workstation 45 with GNOME Shell 51.0. I've also used it with Fedora Workstation 44 (GNOME Shell 50.6) and Ubuntu 26.04.1 (GNOME Shell 50). I haven't tested other Framework models. On Fedora Workstation 44 I confirmed the following on 2026-10-11:
 

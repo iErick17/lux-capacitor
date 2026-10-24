@@ -8,14 +8,13 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {
     BATTERY_DIM_FACTOR,
-    MAX_PREFERENCES,
     advanceBrightness,
-    normalizePreferences,
+    parseAnchors,
     preferredBrightness,
     significantLuxChange,
     upsertPreference,
 } from './brightnessModel.js';
-import {KeyboardController} from './keyboardController.js';
+import {KeyboardController, isLevel} from './keyboardController.js';
 
 const SENSOR_XML = `
 <node>
@@ -46,6 +45,29 @@ const EPSILON = 0.003;
 const KEY_STEP = 0.05;
 const SAVE_DELAY_MS = 500;
 
+function removeSource(id) {
+    if (id)
+        GLib.source_remove(id);
+    return 0;
+}
+
+// Replace object[name] with wrap(original). The returned function restores
+// the original, unless something else has replaced the method since.
+function patchMethod(object, name, wrap) {
+    const original = object[name];
+    const own = Object.hasOwn(object, name);
+    const replacement = wrap(original);
+    object[name] = replacement;
+    return () => {
+        if (object[name] !== replacement)
+            return;
+        if (own)
+            object[name] = original;
+        else
+            delete object[name];
+    };
+}
+
 export default class AdaptiveBrightnessExtension extends Extension {
     enable() {
         const afterLock = this._wasLocked === true;
@@ -75,11 +97,8 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._applying = false;
         this._destroyed = false;
         this._originalKeySteps = new Map();
-        this._originalShowOSD = null;
-        this._originalShowOSDOwn = false;
-        this._originalShowOsdWindow = null;
-        this._originalShowOsdWindowOwn = false;
-        this._speakerOsdWrapper = null;
+        this._restoreShowOSD = null;
+        this._restoreShowOsdWindow = null;
         this._speakerQuickItem = null;
         this._menuSetupId = 0;
         this._menuAttempts = 0;
@@ -108,12 +127,12 @@ export default class AdaptiveBrightnessExtension extends Extension {
         });
         this._lastKeyboardAuto = this._keyboard.autoEnabled;
 
-        this._settingsId = this._settings.connect('changed::enabled',
-            () => this._onEnabledChanged());
-        this._anchorsChangedId = this._settings.connect('changed::anchors',
-            () => this._onAnchorsChanged());
-        this._optionIds = SCREEN_OPTION_KEYS.map(key =>
-            this._settings.connect(`changed::${key}`, () => this._onScreenOptionsChanged()));
+        this._settingsIds = [
+            this._settings.connect('changed::enabled', () => this._onEnabledChanged()),
+            this._settings.connect('changed::anchors', () => this._onAnchorsChanged()),
+            ...SCREEN_OPTION_KEYS.map(key =>
+                this._settings.connect(`changed::${key}`, () => this._onScreenOptionsChanged())),
+        ];
         this._userUpdateId = this._manager.connect('user-update',
             () => this._onUserUpdate());
         this._managerChangedId = this._manager.connect('changed',
@@ -137,13 +156,10 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._stopTimer();
         // Extensions are disabled on lock, so write a pending preference now.
         if (this._saveAnchorsId) {
-            GLib.source_remove(this._saveAnchorsId);
-            this._saveAnchorsId = 0;
+            this._saveAnchorsId = removeSource(this._saveAnchorsId);
             this._saveAnchors();
         }
-        if (this._menuSetupId)
-            GLib.source_remove(this._menuSetupId);
-        this._menuSetupId = 0;
+        this._menuSetupId = removeSource(this._menuSetupId);
         this._removeScreenAutoSwitch();
         this._keyboardAutoMenuItem?.destroy();
         this._keyboardAutoMenuItem = null;
@@ -155,12 +171,8 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._restoreBrightnessOSD();
         this._restoreSpeakerSlider();
         this._restoreSpeakerOSD();
-        if (this._sensorRetryId)
-            GLib.source_remove(this._sensorRetryId);
-        this._sensorRetryId = 0;
-        if (this._claimRetryId)
-            GLib.source_remove(this._claimRetryId);
-        this._claimRetryId = 0;
+        this._sensorRetryId = removeSource(this._sensorRetryId);
+        this._claimRetryId = removeSource(this._claimRetryId);
         this._releaseSensor();
         this._sensorCancellable?.cancel();
 
@@ -168,13 +180,9 @@ export default class AdaptiveBrightnessExtension extends Extension {
             this._sensor.disconnectObject(this);
             this._sensor = null;
         }
-        if (this._settingsId)
-            this._settings.disconnect(this._settingsId);
-        if (this._anchorsChangedId)
-            this._settings.disconnect(this._anchorsChangedId);
-        for (const id of this._optionIds ?? [])
+        for (const id of this._settingsIds ?? [])
             this._settings.disconnect(id);
-        this._optionIds = [];
+        this._settingsIds = [];
         this._upower?.disconnectObject(this);
         this._upower = null;
         if (this._userUpdateId)
@@ -209,20 +217,13 @@ export default class AdaptiveBrightnessExtension extends Extension {
         // Setting autoBrightnessTarget normally calls _sync immediately;
         // inhibit that call until the actual slider value is in place.
         const actual = this._getActualBrightness();
-        const manager = this._manager;
-        const previousInhibit = manager._inhibitUpdates;
-        manager._inhibitUpdates = true;
-        try {
+        this._withoutSync(manager => {
             manager.autoBrightnessTarget = -1;
             if (actual !== null && manager.globalScale) {
                 manager.globalScale.value = actual;
                 manager._globalScaleChanged = true;
             }
-        } finally {
-            manager._inhibitUpdates = previousInhibit;
-        }
-        if (!previousInhibit)
-            manager._sync({showOSD: false});
+        });
     }
 
     _restoreNativeAmbient() {
@@ -233,20 +234,13 @@ export default class AdaptiveBrightnessExtension extends Extension {
         if (previous && !this._powerSettings.get_boolean('ambient-enabled')) {
             // Restore GNOME's centered bias while preserving actual brightness.
             const actual = this._getActualBrightness();
-            const manager = this._manager;
-            const previousInhibit = manager._inhibitUpdates;
-            manager._inhibitUpdates = true;
-            try {
+            this._withoutSync(manager => {
                 if (actual !== null && manager.globalScale) {
                     manager.globalScale.value = 0.5;
                     manager._globalScaleChanged = true;
                     manager.autoBrightnessTarget = actual;
                 }
-            } finally {
-                manager._inhibitUpdates = previousInhibit;
-            }
-            if (!previousInhibit)
-                manager._sync({showOSD: false});
+            });
             this._powerSettings.set_boolean('ambient-enabled', previous);
         }
     }
@@ -274,21 +268,30 @@ export default class AdaptiveBrightnessExtension extends Extension {
             return;
 
         this._applying = true;
-        const previousInhibit = manager._inhibitUpdates;
-        manager._inhibitUpdates = true;
         try {
-            manager.autoBrightnessTarget = -1;
-            manager.globalScale.value = value;
-            manager._globalScaleChanged = true;
-        } finally {
-            manager._inhibitUpdates = previousInhibit;
-        }
-        try {
-            if (!previousInhibit)
-                manager._sync({showOSD: false});
+            this._withoutSync(() => {
+                manager.autoBrightnessTarget = -1;
+                manager.globalScale.value = value;
+                manager._globalScaleChanged = true;
+            });
         } finally {
             this._applying = false;
         }
+    }
+
+    // Each assignment to the brightness manager normally calls _sync. Make
+    // the whole change first, then sync once unless updates were inhibited.
+    _withoutSync(change) {
+        const manager = this._manager;
+        const previousInhibit = manager._inhibitUpdates;
+        manager._inhibitUpdates = true;
+        try {
+            change(manager);
+        } finally {
+            manager._inhibitUpdates = previousInhibit;
+        }
+        if (!previousInhibit)
+            manager._sync({showOSD: false});
     }
 
     _onUserUpdate() {
@@ -364,29 +367,18 @@ export default class AdaptiveBrightnessExtension extends Extension {
             this._claimSensor();
         } else {
             this._releaseSensor();
-            if (this._claimRetryId)
-                GLib.source_remove(this._claimRetryId);
-            this._claimRetryId = 0;
+            this._claimRetryId = removeSource(this._claimRetryId);
         }
     }
 
     _loadAnchors() {
-        try {
-            const anchors = JSON.parse(this._settings.get_string('anchors'));
-            if (!Array.isArray(anchors))
-                return [];
-            // Earlier versions could store contradicting preferences.
-            return normalizePreferences(anchors.filter(a => Number.isFinite(a?.lux) &&
-                a.lux >= 0 && Number.isFinite(a?.brightness)).slice(-MAX_PREFERENCES));
-        } catch {
-            return [];
-        }
+        // Earlier versions could store contradicting preferences.
+        return parseAnchors(this._settings.get_string('anchors'));
     }
 
     _scheduleAnchorSave() {
         // A slider drag emits many updates; write the settled preference once.
-        if (this._saveAnchorsId)
-            GLib.source_remove(this._saveAnchorsId);
+        removeSource(this._saveAnchorsId);
         this._saveAnchorsId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SAVE_DELAY_MS,
             () => {
                 this._saveAnchorsId = 0;
@@ -409,9 +401,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
         // The preferences window resets learned brightness through settings.
         if (this._writingAnchors)
             return;
-        if (this._saveAnchorsId)
-            GLib.source_remove(this._saveAnchorsId);
-        this._saveAnchorsId = 0;
+        this._saveAnchorsId = removeSource(this._saveAnchorsId);
         this._anchors = this._loadAnchors();
         this._anchorUnit = this._settings.get_string('anchor-unit');
         this._retargetNow();
@@ -467,9 +457,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
     }
 
     _clearAnchors() {
-        if (this._saveAnchorsId)
-            GLib.source_remove(this._saveAnchorsId);
-        this._saveAnchorsId = 0;
+        this._saveAnchorsId = removeSource(this._saveAnchorsId);
         this._anchors = [];
         this._anchorUnit = '';
         this._saveAnchors();
@@ -490,7 +478,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
         // only the displayed slider value, with its write callbacks blocked.
         const item = this._keyboardQuickItem;
         const level = this._keyboard?.currentLevel;
-        if (!item || !Number.isInteger(level) || level < 0 || level > 100)
+        if (!item || !isLevel(level))
             return;
         item.checked = level > 0;
         item.subtitle = `${level}%`;
@@ -684,135 +672,95 @@ export default class AdaptiveBrightnessExtension extends Extension {
     }
 
     _stopTimer() {
-        if (this._timerId)
-            GLib.source_remove(this._timerId);
-        this._timerId = 0;
+        this._timerId = removeSource(this._timerId);
     }
 
     _enforceKeyStep() {
         for (const scale of [this._manager.globalScale, ...this._manager.scales]) {
             if (!scale || this._originalKeySteps.has(scale))
                 continue;
-            this._originalKeySteps.set(scale, {
-                up: scale.stepUp,
-                down: scale.stepDown,
-                ownUp: Object.hasOwn(scale, 'stepUp'),
-                ownDown: Object.hasOwn(scale, 'stepDown'),
-            });
             // Shell's keybindings call these methods. Setting value normally
             // keeps the user-update signal and lux preference learning intact.
-            scale.stepUp = () => {
-                scale.value = Math.min(1, scale.value + KEY_STEP);
-            };
-            scale.stepDown = () => {
-                scale.value = Math.max(0, scale.value - KEY_STEP);
-            };
+            this._originalKeySteps.set(scale, [
+                patchMethod(scale, 'stepUp', () => () => {
+                    scale.value = Math.min(1, scale.value + KEY_STEP);
+                }),
+                patchMethod(scale, 'stepDown', () => () => {
+                    scale.value = Math.max(0, scale.value - KEY_STEP);
+                }),
+            ]);
         }
     }
 
     _restoreKeySteps() {
-        for (const [scale, original] of this._originalKeySteps) {
-            if (original.ownUp)
-                scale.stepUp = original.up;
-            else
-                delete scale.stepUp;
-            if (original.ownDown)
-                scale.stepDown = original.down;
-            else
-                delete scale.stepDown;
-        }
+        for (const restores of this._originalKeySteps.values())
+            restores.forEach(restore => restore());
         this._originalKeySteps.clear();
     }
 
     _patchBrightnessOSD() {
         const manager = this._manager;
-        this._originalShowOSD = manager._showOSD;
-        this._originalShowOSDOwn = Object.hasOwn(manager, '_showOSD');
-        manager._showOSD = scales => {
+        this._restoreShowOSD = patchMethod(manager, '_showOSD', original => scales => {
             // The input can be an iterator, so retain it for the numeric labels.
             const shownScales = [...scales];
-            this._originalShowOSD.call(manager, shownScales);
+            original.call(manager, shownScales);
             for (const scale of shownScales) {
                 const monitor = scale.monitor.get_number();
                 Main.osdWindowManager._osdWindows[monitor]?.setLabel(
                     String(Math.round(scale.value * 100)));
             }
-        };
+        });
     }
 
     _restoreBrightnessOSD() {
-        if (!this._originalShowOSD || !this._manager)
-            return;
-        if (this._originalShowOSDOwn)
-            this._manager._showOSD = this._originalShowOSD;
-        else
-            delete this._manager._showOSD;
-        this._originalShowOSD = null;
+        this._restoreShowOSD?.();
+        this._restoreShowOSD = null;
     }
 
     _patchSpeakerOSD() {
         const manager = Main.osdWindowManager;
-        this._originalShowOsdWindow = manager._showOsdWindow;
-        this._originalShowOsdWindowOwn = Object.hasOwn(manager, '_showOsdWindow');
-        this._speakerOsdWrapper = (monitorIndex, icon, label, level, maxLevel) => {
-            const names = icon?.get_names?.() ?? [];
-            const isSpeaker = names.some(name =>
-                /^audio-volume-(muted|low|medium|high|overamplified)(-symbolic)?$/.test(name));
-            const shownLabel = isSpeaker && Number.isFinite(level)
-                ? String(Math.round(level * 100)) : label;
-            const result = this._originalShowOsdWindow.call(manager,
-                monitorIndex, icon, shownLabel, level, maxLevel);
-            const isBrightness = names.includes('display-brightness-symbolic');
-            if ((isSpeaker || isBrightness) && Number.isFinite(level)) {
-                // Repeated 100 ms animations lag behind rapid slider reversals.
-                const bar = manager._osdWindows[monitorIndex]?._level;
-                if (bar) {
-                    bar.remove_transition('value');
-                    bar.value = level;
+        this._restoreShowOsdWindow = patchMethod(manager, '_showOsdWindow',
+            original => (monitorIndex, icon, label, level, maxLevel) => {
+                const names = icon?.get_names?.() ?? [];
+                const isSpeaker = names.some(name =>
+                    /^audio-volume-(muted|low|medium|high|overamplified)(-symbolic)?$/.test(name));
+                const shownLabel = isSpeaker && Number.isFinite(level)
+                    ? String(Math.round(level * 100)) : label;
+                const result = original.call(manager,
+                    monitorIndex, icon, shownLabel, level, maxLevel);
+                const isBrightness = names.includes('display-brightness-symbolic');
+                if ((isSpeaker || isBrightness) && Number.isFinite(level)) {
+                    // Repeated 100 ms animations lag behind rapid slider reversals.
+                    const bar = manager._osdWindows[monitorIndex]?._level;
+                    if (bar) {
+                        bar.remove_transition('value');
+                        bar.value = level;
+                    }
                 }
-            }
-            return result;
-        };
-        manager._showOsdWindow = this._speakerOsdWrapper;
+                return result;
+            });
     }
 
     _restoreSpeakerOSD() {
-        const manager = Main.osdWindowManager;
-        if (!this._originalShowOsdWindow ||
-            manager._showOsdWindow !== this._speakerOsdWrapper)
-            return;
-        if (this._originalShowOsdWindowOwn)
-            manager._showOsdWindow = this._originalShowOsdWindow;
-        else
-            delete manager._showOsdWindow;
-        this._speakerOsdWrapper = null;
-        this._originalShowOsdWindow = null;
+        this._restoreShowOsdWindow?.();
+        this._restoreShowOsdWindow = null;
     }
 
     _patchSpeakerSlider(item) {
         this._speakerQuickItem = item;
-        this._originalSpeakerSliderChanged = item._sliderChanged;
-        this._originalSpeakerSliderChangedOwn = Object.hasOwn(item, '_sliderChanged');
-        this._speakerSliderWrapper = (...args) => {
-            this._originalSpeakerSliderChanged.apply(item, args);
-            // GNOME blocks this handler when synchronizing backend volume updates.
-            if (item.stream)
-                item.showOSD();
-        };
-        item._sliderChanged = this._speakerSliderWrapper;
+        this._restoreSliderChanged = patchMethod(item, '_sliderChanged',
+            original => (...args) => {
+                original.apply(item, args);
+                // GNOME blocks this handler when synchronizing backend volume updates.
+                if (item.stream)
+                    item.showOSD();
+            });
     }
 
     _restoreSpeakerSlider() {
-        const item = this._speakerQuickItem;
-        if (item && item._sliderChanged === this._speakerSliderWrapper) {
-            if (this._originalSpeakerSliderChangedOwn)
-                item._sliderChanged = this._originalSpeakerSliderChanged;
-            else
-                delete item._sliderChanged;
-        }
+        this._restoreSliderChanged?.();
+        this._restoreSliderChanged = null;
         this._speakerQuickItem = null;
-        this._speakerSliderWrapper = null;
-        this._originalSpeakerSliderChanged = null;
     }
 
     _scheduleQuickSettingsMenus() {
@@ -960,14 +908,11 @@ export default class AdaptiveBrightnessExtension extends Extension {
         });
         // GNOME's own property-change callback also moves the thumb. Its
         // intermediate fade acknowledgements must not override user input.
-        this._keyboardOriginalSync = item._sync;
-        this._keyboardOriginalSyncOwn = Object.hasOwn(item, '_sync');
-        this._keyboardSyncWrapper = () => {
+        this._restoreKeyboardSync = patchMethod(item, '_sync', original => () => {
             if (!this._keyboardDragging && this._keyboard?.manualTarget == null)
-                this._keyboardOriginalSync.call(item);
+                original.call(item);
             this._syncKeyboardToggle();
-        };
-        item._sync = this._keyboardSyncWrapper;
+        });
         this._keyboardOriginalSliderId = item._sliderItemChangedId;
         this._keyboardOriginalDiscreteId = item._discreteItemChangedId;
         item._sliderItem.block_signal_handler(this._keyboardOriginalSliderId);
@@ -996,14 +941,8 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._keyboardDragBeginId = 0;
         this._keyboardDragEndId = 0;
         this._keyboardDragging = false;
-        if (item._sync === this._keyboardSyncWrapper) {
-            if (this._keyboardOriginalSyncOwn)
-                item._sync = this._keyboardOriginalSync;
-            else
-                delete item._sync;
-        }
-        this._keyboardOriginalSync = null;
-        this._keyboardSyncWrapper = null;
+        this._restoreKeyboardSync?.();
+        this._restoreKeyboardSync = null;
         item.subtitle = this._keyboardOriginalSubtitle;
         if (this._keyboardSliderId) {
             item._sliderItem.disconnect(this._keyboardSliderId);

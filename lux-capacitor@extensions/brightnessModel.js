@@ -66,22 +66,29 @@ function checkedAnchors(anchors) {
     });
 }
 
-/** Default, monotone mapping from ambient lux to a display brightness fraction. */
-export function curve(lux) {
+/**
+ * Interpolate a [lux, value] table linearly in log-lux space, so small
+ * changes in a dim room matter more than similar changes in daylight.
+ */
+export function interpolateLogLux(table, lux) {
     const x = logLux(lux);
 
-    for (let i = 1; i < DEFAULT_CURVE.length; i++) {
-        const [rightLux, rightBrightness] = DEFAULT_CURVE[i];
+    for (let i = 1; i < table.length; i++) {
+        const [rightLux, rightValue] = table[i];
         if (lux <= rightLux) {
-            const [leftLux, leftBrightness] = DEFAULT_CURVE[i - 1];
+            const [leftLux, leftValue] = table[i - 1];
             const fraction = (x - Math.log1p(leftLux)) /
                 (Math.log1p(rightLux) - Math.log1p(leftLux));
-            return clampBrightness(leftBrightness +
-                fraction * (rightBrightness - leftBrightness));
+            return leftValue + fraction * (rightValue - leftValue);
         }
     }
 
-    return MAX_BRIGHTNESS;
+    return table[table.length - 1][1];
+}
+
+/** Default, monotone mapping from ambient lux to a display brightness fraction. */
+export function curve(lux) {
+    return clampBrightness(interpolateLogLux(DEFAULT_CURVE, lux));
 }
 
 /**
@@ -211,6 +218,19 @@ export function upsertPreference(anchors, lux, desired) {
 export function normalizePreferences(anchors) {
     return checkedAnchors(anchors).reduce((result, anchor) =>
         upsertPreference(result, anchor.lux, anchor.brightness), []);
+}
+
+/** Read stored anchors JSON, dropping invalid entries and old contradictions. */
+export function parseAnchors(json) {
+    try {
+        const anchors = JSON.parse(json);
+        if (!Array.isArray(anchors))
+            return [];
+        return normalizePreferences(anchors.filter(a => Number.isFinite(a?.lux) &&
+            a.lux >= 0 && Number.isFinite(a?.brightness)).slice(-MAX_PREFERENCES));
+    } catch {
+        return [];
+    }
 }
 
 /** Ignore small sensor fluctuations, as a fraction of the current light. */

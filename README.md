@@ -12,7 +12,7 @@ Lux Capacitor adjusts brightness to ambient light, adds separate screen and keyb
 
 | System | Validation |
 | --- | --- |
-| Framework Laptop 13 (AMD Ryzen AI 300 Series), Fedora Workstation 45, GNOME Shell 51 | v0.2.3: my laptop now runs this. I checked GNOME 51's code for every internal the extension uses, and the automated checks pass on Fedora 45. Hardware testing on GNOME 51 is pending. |
+| Framework Laptop 13 (AMD Ryzen AI 300 Series), Fedora Workstation 45, GNOME Shell 51 | v0.2.4: I checked screen Auto and learning, the brightness keys, volume, Fn+Space, keyboard Auto, Quick Settings, lock, suspend and resume, and the settings window on my laptop. The automated checks pass on Fedora 45. |
 | Framework Laptop 13 (AMD Ryzen AI 300 Series), Fedora Workstation 44, GNOME Shell 50 | v0.2.1: I recorded keyboard Auto and Fn+Space on my laptop and confirmed them. Earlier versions: screen brightness, keyboard controls, and recovery after suspend. |
 | Framework Laptop 13 (AMD Ryzen AI 300 Series), Ubuntu 26.04.1, GNOME Shell 50 | I used it on my laptop up to v0.1.2. I haven't tested v0.2.x on Ubuntu hardware yet; the automated checks pass. |
 | Other Framework models | I haven't tested these yet. They need compatible light-sensor and keyboard-backlight interfaces. |

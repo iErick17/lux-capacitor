@@ -7,7 +7,7 @@
     "51"
   ],
   "settings-schema": "org.gnome.shell.extensions.adaptive-brightness",
-  "version": 14,
-  "version-name": "0.2.3",
+  "version": 15,
+  "version-name": "0.2.4",
   "url": "https://github.com/iErick17/lux-capacitor"
 }

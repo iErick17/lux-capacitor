@@ -435,7 +435,7 @@ test('Turning screen Auto off resets preferences and cancels a pending save', ()
         'pending save survived the reset');
 });
 
-test('Disabling on lock writes a pending screen preference', () => {
+test('Disabling (on logout) writes a pending screen preference', () => {
     const {e, values, sense, drag} = screenFixture();
     Main.sessionMode = {isLocked: true};
     Main.osdWindowManager = {};
@@ -443,6 +443,37 @@ test('Disabling on lock writes a pending screen preference', () => {
     drag(0.7);
     e.disable();
     assert(JSON.parse(values.anchors)[0]?.brightness === 0.7, 'pending preference was lost on lock');
+});
+
+test('Locking hides the Auto switches but keeps brightness control running', () => {
+    const {e, targets, sense} = screenFixture();
+    let destroyed = 0;
+    const keyboardTile = {};
+    Object.assign(e, {
+        _screenQuickItem: {disconnect() {}, menuEnabled: true,
+            _monitorBrightnessSection: {actor: {visible: true}}},
+        _screenAutoMenuItem: {disconnect() {}, destroy() { destroyed++; }},
+        _screenMenuEnabledId: 1, _screenQuickItemDestroyId: 2, _screenAutoMenuItemDestroyId: 3,
+        _screenSectionWasVisible: true,
+        _keyboardAutoMenuItem: {destroy() { destroyed++; }},
+        _keyboardQuickItem: keyboardTile, _menuSetupId: 0,
+    });
+    e._manager.scales = [];
+    Main.sessionMode = {isLocked: true};
+    e._onSessionModeChanged();
+    assert(destroyed === 2 && !e._screenAutoMenuItem && !e._keyboardAutoMenuItem,
+        'an Auto switch stayed visible on the lock screen');
+    assert(e._keyboardQuickItem === keyboardTile, 'the keyboard tile lost its handlers on the lock screen');
+    sense(5);
+    sense(500);
+    assert(targets.length === 2 && targets[1] > targets[0], 'brightness stopped following the light while locked');
+    e._scheduleQuickSettingsMenus();
+    assert(!e._menuSetupId, 'a menu retry re-added the switches while locked');
+    Main.sessionMode = {isLocked: false};
+    let scheduled = 0;
+    e._scheduleQuickSettingsMenus = () => scheduled++;
+    e._onSessionModeChanged();
+    assert(scheduled === 1, 'the switches were not restored after unlocking');
 });
 
 test('Contradicting preferences stored by earlier versions are cleaned up on load', () => {

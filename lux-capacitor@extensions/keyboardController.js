@@ -171,7 +171,7 @@ export class KeyboardController {
         return this._currentLevel;
     }
 
-    enable(afterLock = false) {
+    enable() {
         if (this._enabled)
             return;
         this._enabled = true;
@@ -204,8 +204,6 @@ export class KeyboardController {
         this._optionsIds = ['keyboard-idle-timeout', 'keyboard-dark-lux'].map(key =>
             this._settings.connect(`changed::${key}`, () => this._onOptionsChanged()));
         this._watchIdle();
-        if (afterLock)
-            this._beginWakeHold();
         this._powerSignalId = Gio.DBus.system.signal_subscribe(
             'org.freedesktop.UPower', 'org.freedesktop.UPower.KbdBacklight',
             'BrightnessChangedWithSource', '/org/freedesktop/UPower/KbdBacklight',

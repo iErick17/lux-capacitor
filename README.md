@@ -27,6 +27,7 @@ I installed this repeatedly on the same Framework laptop while switching between
 - Small light-sensor fluctuations are ignored, so the screen only moves when the light really changes.
 - Learned preferences persist across logins and reboots. Turning screen Auto off resets them to the default curve.
 - Separate screen and keyboard Auto controls.
+- Keeps working on the lock screen, so waking the laptop in a dark room never lights the screen up at full brightness. The Auto switches are hidden until you unlock.
 - A settings window (Extensions app → Lux Capacitor → Settings) with transition speed, light sensitivity, minimum and maximum Auto brightness, slight dimming on battery, a graph of the learned brightness curve, and a reset button.
 - Keyboard settings: turn the light off after a chosen idle time (only when Auto turned it on), and the light level below which keyboard Auto lights the keyboard. Fn+Space and the keyboard slider still switch to a manual level and turn keyboard Auto off.
 - Fn+Space steps through 0%, 20%, 50%, 75%, and 100%, and turns keyboard Auto off. The laptop's firmware handles Fn+Space itself with its own levels, so its level can flash for a moment (under about 75 ms) before Lux Capacitor sets the step.
@@ -61,7 +62,7 @@ Open Extensions, then Lux Capacitor → Settings, or run `gnome-extensions prefs
 | Light sensitivity | How much the light must change before the screen moves, so small sensor fluctuations are ignored: about 30% (**Low**), 15% (**Normal**), or 7% (**High**). Larger changes always react right away. | Normal |
 | Minimum brightness | Lower limit for Auto's default curve, in percent. Brightness you set yourself is still used exactly, even below it. Raising it above the maximum moves the maximum up too. | 0% |
 | Maximum brightness | Upper limit for Auto's default curve, in percent. Brightness you set yourself is still used exactly, even above it. Lowering it below the minimum moves the minimum down too. | 100% |
-| Slightly dim on battery | While unplugged, Auto brightness is reduced to 85%. Brightness you set on battery is learned without that reduction, so plugging in brings back your full level. | Off |
+| Slightly dim on battery | **Known issue:** this currently has no effect ([issue #6](https://github.com/iErick17/lux-capacitor/issues/6)). It is meant to reduce Auto brightness to 85% while unplugged. Brightness you set on battery is learned without that reduction, so plugging in brings back your full level. | Off |
 | Learned brightness graph | Light level in lux across (log scale, 1 to 1000+), brightness up. The dashed line is the default curve within your limits, the solid line is what Auto actually uses, and each dot is one of your adjustments. | — |
 | Reset Learned Screen Brightness | Forgets all your adjustments and returns to the default curve. Turning screen Auto off in Quick Settings does the same. | — |
 

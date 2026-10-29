@@ -71,8 +71,6 @@ function patchMethod(object, name, wrap) {
 
 export default class AdaptiveBrightnessExtension extends Extension {
     enable() {
-        const afterLock = this._wasLocked === true;
-        this._wasLocked = false;
         this._settings = this.getSettings();
         this._powerSettings = new Gio.Settings({schema_id: POWER_SCHEMA});
         this._manager = Main.brightnessManager;
@@ -146,16 +144,24 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._patchBrightnessOSD();
         this._patchSpeakerOSD();
         this._scheduleQuickSettingsMenus();
-        this._keyboard.enable(afterLock);
+        this._keyboard.enable();
         this._connectSensor();
         this._connectUPower();
+        // The extension also runs on the lock screen (session-modes), so
+        // GNOME no longer hands brightness back to its own, much brighter,
+        // automatic brightness whenever the screen locks. Only the Auto
+        // switches are hidden while locked.
+        this._sessionModeId = Main.sessionMode.connect('updated',
+            () => this._onSessionModeChanged());
     }
 
     disable() {
-        this._wasLocked = Main.sessionMode.isLocked;
         this._destroyed = true;
         this._stopTimer();
-        // Extensions are disabled on lock, so write a pending preference now.
+        if (this._sessionModeId)
+            Main.sessionMode.disconnect(this._sessionModeId);
+        this._sessionModeId = 0;
+        // Disable runs on logout, so write a pending preference now.
         if (this._saveAnchorsId) {
             this._saveAnchorsId = removeSource(this._saveAnchorsId);
             this._saveAnchors();
@@ -470,10 +476,11 @@ export default class AdaptiveBrightnessExtension extends Extension {
     }
 
     _syncKeyboardToggle() {
-        if (!this._keyboardAutoMenuItem)
-            return;
-        this._keyboardAutoMenuItem.state = !!this._keyboard?.autoEnabled;
-        this._keyboardAutoMenuItem.reactive = !!this._keyboard?.available;
+        // The switch is hidden on the lock screen; the tile still updates.
+        if (this._keyboardAutoMenuItem) {
+            this._keyboardAutoMenuItem.state = !!this._keyboard?.autoEnabled;
+            this._keyboardAutoMenuItem.reactive = !!this._keyboard?.available;
+        }
 
         // Firmware hotkeys can bypass GNOME's cached D-Bus brightness. Update
         // only the displayed slider value, with its write callbacks blocked.
@@ -762,8 +769,20 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._speakerQuickItem = null;
     }
 
+    _onSessionModeChanged() {
+        if (Main.sessionMode.isLocked) {
+            // Nobody should change Auto settings on a locked laptop.
+            this._menuSetupId = removeSource(this._menuSetupId);
+            this._removeScreenAutoSwitch();
+            this._keyboardAutoMenuItem?.destroy();
+            this._keyboardAutoMenuItem = null;
+        } else {
+            this._scheduleQuickSettingsMenus();
+        }
+    }
+
     _scheduleQuickSettingsMenus() {
-        if (this._menuSetupId)
+        if (this._menuSetupId || Main.sessionMode.isLocked)
             return;
         const currentScreen = Main.panel.statusArea.quickSettings?._brightness
             ?.quickSettingsItems?.[0];
@@ -886,8 +905,14 @@ export default class AdaptiveBrightnessExtension extends Extension {
         });
         item.menu.addMenuItem(switchItem, 0);
         this._keyboardAutoMenuItem = switchItem;
-        this._keyboardQuickItem = item;
-        this._installKeyboardManualHandlers(item);
+        // The tile's handlers stay installed while the switch is hidden on
+        // the lock screen, so they are only replaced for a new tile.
+        if (this._keyboardQuickItem !== item) {
+            if (this._keyboardQuickItem)
+                this._restoreKeyboardManualHandlers();
+            this._keyboardQuickItem = item;
+            this._installKeyboardManualHandlers(item);
+        }
         this._syncKeyboardToggle();
     }
 

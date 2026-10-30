@@ -476,6 +476,56 @@ test('Locking hides the Auto switches but keeps brightness control running', () 
     assert(scheduled === 1, 'the switches were not restored after unlocking');
 });
 
+test('A closed lid turns keyboard Auto light off and ignores the darkness under it', () => {
+    const {c, settings, writes} = fixture(true, 30);
+    c.onSensorLevel(0);
+    assert(c._target === 55, 'Auto did not light the keyboard in the dark');
+    c.setLidClosed(true);
+    assert(writes.at(-1) === 0 && c._target === 0 && settings.value, 'closing the lid left the light on or turned Auto off');
+    c._onActualLevel(0);
+    assert(settings.value && writes.join() === '0', 'the off write was mistaken for Fn+Space');
+    c.onSensorLevel(0);
+    assert(c._lux === null && c._target === 0, 'darkness under the closed lid lit the keyboard');
+    c.setLidClosed(false);
+    assert(c._target === 0 && writes.join() === '0', 'opening the lid lit the keyboard before a fresh reading');
+    c.onSensorLevel(0);
+    assert(c._target === 55, 'keyboard Auto did not resume after opening the lid');
+});
+
+test('A closed lid turns a manual keyboard level off and restores it on opening', () => {
+    const {c, settings, writes} = fixture(false, 50);
+    c.setLidClosed(true);
+    c.setLidClosed(false);
+    assert(!settings.value && writes.join() === '0,50', `manual level not restored: ${writes.join()}`);
+});
+
+test('Closing the lid releases the light sensor and opening it resumes screen Auto', () => {
+    const {e, targets, sense} = screenFixture();
+    delete e._sensorDesired;
+    let released = 0;
+    let claimed = 0;
+    e._releaseSensor = () => {
+        released++;
+        e._sensorClaimed = false;
+    };
+    e._claimSensor = () => {
+        claimed++;
+        e._sensorClaimed = true;
+        e._readLux();
+    };
+    sense(300);
+    const upower = {LidIsPresent: true, LidIsClosed: true, OnBattery: false};
+    e._upower = upower;
+    e._onPowerChanged();
+    assert(released === 1 && e._lux === null, 'the sensor stayed claimed under a closed lid');
+    sense(0);
+    assert(targets.length === 1, 'darkness under the closed lid moved the screen');
+    e._sensor.LightLevel = 300;
+    upower.LidIsClosed = false;
+    e._onPowerChanged();
+    assert(claimed === 1 && e._lux === 300 && targets.length === 2, 'screen Auto did not resume after opening the lid');
+});
+
 test('Contradicting preferences stored by earlier versions are cleaned up on load', () => {
     const {e} = screenFixture('[{"lux":40,"brightness":0.9},{"lux":150,"brightness":0.3}]');
     assert(e._anchors.length === 1 && e._anchors[0].lux === 150, 'stored contradiction was kept');

@@ -28,6 +28,7 @@ I installed this repeatedly on the same Framework laptop while switching between
 - Learned preferences persist across logins and reboots. Turning screen Auto off resets them to the default curve.
 - Separate screen and keyboard Auto controls.
 - Keeps working on the lock screen, so waking the laptop in a dark room never lights the screen up at full brightness. The Auto switches are hidden until you unlock.
+- Knows when the lid is closed. When the laptop keeps running with the lid shut (for example, docked to an external monitor), it releases the light sensor, which would otherwise read the darkness under the lid, and turns the keyboard light off. Everything resumes when you open the lid.
 - A settings window (Extensions app → Lux Capacitor → Settings) with transition speed, light sensitivity, minimum and maximum Auto brightness, slight dimming on battery, a graph of the learned brightness curve, and a reset button.
 - Keyboard settings: turn the light off after a chosen idle time (only when Auto turned it on), and the light level below which keyboard Auto lights the keyboard. Fn+Space and the keyboard slider still switch to a manual level and turn keyboard Auto off.
 - Fn+Space steps through 0%, 20%, 50%, 75%, and 100%, and turns keyboard Auto off. The laptop's firmware handles Fn+Space itself with its own levels, so its level can flash for a moment (under about 75 ms) before Lux Capacitor sets the step.

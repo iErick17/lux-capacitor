@@ -33,6 +33,8 @@ const UPOWER_XML = `
 <node>
   <interface name="org.freedesktop.UPower">
     <property name="OnBattery" type="b" access="read"/>
+    <property name="LidIsClosed" type="b" access="read"/>
+    <property name="LidIsPresent" type="b" access="read"/>
   </interface>
 </node>`;
 const UPowerProxy = Gio.DBusProxy.makeProxyWrapper(UPOWER_XML);
@@ -113,6 +115,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._keyboardDiscreteId = 0;
 
         this._onBattery = false;
+        this._lidClosed = false;
         this._upower = null;
         this._writingAnchors = false;
         this._readScreenOptions();
@@ -366,7 +369,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
     }
 
     _sensorDesired() {
-        return this._autoEnabled || !!this._keyboard?.autoEnabled;
+        return !this._lidClosed && (this._autoEnabled || !!this._keyboard?.autoEnabled);
     }
 
     _updateSensorClaim() {
@@ -455,12 +458,32 @@ export default class AdaptiveBrightnessExtension extends Extension {
     }
 
     _onPowerChanged() {
+        const lidClosed = !!this._upower?.LidIsPresent && !!this._upower?.LidIsClosed;
+        if (lidClosed !== this._lidClosed) {
+            this._lidClosed = lidClosed;
+            this._onLidChanged();
+        }
         const onBattery = !!this._upower?.OnBattery;
         if (onBattery === this._onBattery)
             return;
         this._onBattery = onBattery;
         if (this._dimOnBattery)
             this._retargetNow();
+    }
+
+    // A closed lid covers the light sensor, which then reads darkness, and
+    // hides the built-in screen and keyboard. Docked laptops keep running
+    // like this, so release the sensor and turn the keyboard light off until
+    // the lid opens; the reopened sensor's first reading retargets both.
+    _onLidChanged() {
+        this._keyboard?.setLidClosed(this._lidClosed);
+        if (this._lidClosed) {
+            this._stopTimer();
+            this._lux = null;
+        }
+        this._targetLux = null;
+        this._updateSensorClaim();
+        this._syncToggle();
     }
 
     _clearAnchors() {

@@ -124,6 +124,8 @@ export class KeyboardController {
         this._idleWatchId = 0;
         this._activeWatchId = 0;
         this._idle = false;
+        this._lidClosed = false;
+        this._lidLevel = null;
         this._onChanged = onChanged;
         this._onManualChanged = onManualChanged;
         this._isDimming = isDimming;
@@ -171,7 +173,7 @@ export class KeyboardController {
         return this._currentLevel;
     }
 
-    enable(afterLock = false) {
+    enable() {
         if (this._enabled)
             return;
         this._enabled = true;
@@ -204,8 +206,6 @@ export class KeyboardController {
         this._optionsIds = ['keyboard-idle-timeout', 'keyboard-dark-lux'].map(key =>
             this._settings.connect(`changed::${key}`, () => this._onOptionsChanged()));
         this._watchIdle();
-        if (afterLock)
-            this._beginWakeHold();
         this._powerSignalId = Gio.DBus.system.signal_subscribe(
             'org.freedesktop.UPower', 'org.freedesktop.UPower.KbdBacklight',
             'BrightnessChangedWithSource', '/org/freedesktop/UPower/KbdBacklight',
@@ -305,7 +305,8 @@ export class KeyboardController {
     }
 
     onSensorLevel(lux) {
-        if (!Number.isFinite(lux) || lux < 0)
+        // Under a closed lid the sensor reads darkness; it is not the room.
+        if (!Number.isFinite(lux) || lux < 0 || this._lidClosed)
             return;
         this._lux = lux;
         if (!this._wakeHoldId)
@@ -321,7 +322,7 @@ export class KeyboardController {
             this._settings.get_int('keyboard-dark-lux'));
         this._autoLit = lit;
         // While idle, Auto keeps its on/off state but fades the light out.
-        this._target = this._idle ? 0 : target;
+        this._target = this._idle || this._lidClosed ? 0 : target;
         this._startRamp();
     }
 
@@ -377,6 +378,31 @@ export class KeyboardController {
         this._idle = false;
         if (this._enabled && this._autoEnabled)
             this._retargetFromSensor();
+    }
+
+    // With the lid shut nobody sees the keys, so the light stays off until
+    // it opens. The off write goes through the normal own-write path, so it
+    // is never mistaken for Fn+Space, and the Auto setting is unchanged.
+    setLidClosed(closed) {
+        if (!!closed === this._lidClosed)
+            return;
+        this._lidClosed = !!closed;
+        if (!this._enabled)
+            return;
+        if (this._lidClosed) {
+            this._lidLevel = this._autoEnabled ? null : this._lastActual ?? this._currentLevel;
+            this._stopRamp();
+            this._lux = null;
+            this._autoLit = false;
+            this._target = this._autoEnabled ? 0 : this._target;
+            this._smoothLevel = 0;
+            this._requestWrite(0);
+        } else if (!this._autoEnabled && isLevel(this._lidLevel)) {
+            // Auto waits for a fresh reading from the reopened sensor.
+            this._smoothLevel = this._lidLevel;
+            this._requestWrite(this._lidLevel);
+        }
+        this._changed();
     }
 
     setAutoEnabled(enabled, reason = 'Auto switch') {

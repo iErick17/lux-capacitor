@@ -33,6 +33,8 @@ const UPOWER_XML = `
 <node>
   <interface name="org.freedesktop.UPower">
     <property name="OnBattery" type="b" access="read"/>
+    <property name="LidIsClosed" type="b" access="read"/>
+    <property name="LidIsPresent" type="b" access="read"/>
   </interface>
 </node>`;
 const UPowerProxy = Gio.DBusProxy.makeProxyWrapper(UPOWER_XML);
@@ -71,8 +73,6 @@ function patchMethod(object, name, wrap) {
 
 export default class AdaptiveBrightnessExtension extends Extension {
     enable() {
-        const afterLock = this._wasLocked === true;
-        this._wasLocked = false;
         this._settings = this.getSettings();
         this._powerSettings = new Gio.Settings({schema_id: POWER_SCHEMA});
         this._manager = Main.brightnessManager;
@@ -115,6 +115,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._keyboardDiscreteId = 0;
 
         this._onBattery = false;
+        this._lidClosed = false;
         this._upower = null;
         this._writingAnchors = false;
         this._readScreenOptions();
@@ -146,16 +147,24 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._patchBrightnessOSD();
         this._patchSpeakerOSD();
         this._scheduleQuickSettingsMenus();
-        this._keyboard.enable(afterLock);
+        this._keyboard.enable();
         this._connectSensor();
         this._connectUPower();
+        // The extension also runs on the lock screen (session-modes), so
+        // GNOME no longer hands brightness back to its own, much brighter,
+        // automatic brightness whenever the screen locks. Only the Auto
+        // switches are hidden while locked.
+        this._sessionModeId = Main.sessionMode.connect('updated',
+            () => this._onSessionModeChanged());
     }
 
     disable() {
-        this._wasLocked = Main.sessionMode.isLocked;
         this._destroyed = true;
         this._stopTimer();
-        // Extensions are disabled on lock, so write a pending preference now.
+        if (this._sessionModeId)
+            Main.sessionMode.disconnect(this._sessionModeId);
+        this._sessionModeId = 0;
+        // Disable runs on logout, so write a pending preference now.
         if (this._saveAnchorsId) {
             this._saveAnchorsId = removeSource(this._saveAnchorsId);
             this._saveAnchors();
@@ -360,7 +369,7 @@ export default class AdaptiveBrightnessExtension extends Extension {
     }
 
     _sensorDesired() {
-        return this._autoEnabled || !!this._keyboard?.autoEnabled;
+        return !this._lidClosed && (this._autoEnabled || !!this._keyboard?.autoEnabled);
     }
 
     _updateSensorClaim() {
@@ -449,12 +458,32 @@ export default class AdaptiveBrightnessExtension extends Extension {
     }
 
     _onPowerChanged() {
+        const lidClosed = !!this._upower?.LidIsPresent && !!this._upower?.LidIsClosed;
+        if (lidClosed !== this._lidClosed) {
+            this._lidClosed = lidClosed;
+            this._onLidChanged();
+        }
         const onBattery = !!this._upower?.OnBattery;
         if (onBattery === this._onBattery)
             return;
         this._onBattery = onBattery;
         if (this._dimOnBattery)
             this._retargetNow();
+    }
+
+    // A closed lid covers the light sensor, which then reads darkness, and
+    // hides the built-in screen and keyboard. Docked laptops keep running
+    // like this, so release the sensor and turn the keyboard light off until
+    // the lid opens; the reopened sensor's first reading retargets both.
+    _onLidChanged() {
+        this._keyboard?.setLidClosed(this._lidClosed);
+        if (this._lidClosed) {
+            this._stopTimer();
+            this._lux = null;
+        }
+        this._targetLux = null;
+        this._updateSensorClaim();
+        this._syncToggle();
     }
 
     _clearAnchors() {
@@ -470,10 +499,11 @@ export default class AdaptiveBrightnessExtension extends Extension {
     }
 
     _syncKeyboardToggle() {
-        if (!this._keyboardAutoMenuItem)
-            return;
-        this._keyboardAutoMenuItem.state = !!this._keyboard?.autoEnabled;
-        this._keyboardAutoMenuItem.reactive = !!this._keyboard?.available;
+        // The switch is hidden on the lock screen; the tile still updates.
+        if (this._keyboardAutoMenuItem) {
+            this._keyboardAutoMenuItem.state = !!this._keyboard?.autoEnabled;
+            this._keyboardAutoMenuItem.reactive = !!this._keyboard?.available;
+        }
 
         // Firmware hotkeys can bypass GNOME's cached D-Bus brightness. Update
         // only the displayed slider value, with its write callbacks blocked.
@@ -762,8 +792,20 @@ export default class AdaptiveBrightnessExtension extends Extension {
         this._speakerQuickItem = null;
     }
 
+    _onSessionModeChanged() {
+        if (Main.sessionMode.isLocked) {
+            // Nobody should change Auto settings on a locked laptop.
+            this._menuSetupId = removeSource(this._menuSetupId);
+            this._removeScreenAutoSwitch();
+            this._keyboardAutoMenuItem?.destroy();
+            this._keyboardAutoMenuItem = null;
+        } else {
+            this._scheduleQuickSettingsMenus();
+        }
+    }
+
     _scheduleQuickSettingsMenus() {
-        if (this._menuSetupId)
+        if (this._menuSetupId || Main.sessionMode.isLocked)
             return;
         const currentScreen = Main.panel.statusArea.quickSettings?._brightness
             ?.quickSettingsItems?.[0];
@@ -886,8 +928,14 @@ export default class AdaptiveBrightnessExtension extends Extension {
         });
         item.menu.addMenuItem(switchItem, 0);
         this._keyboardAutoMenuItem = switchItem;
-        this._keyboardQuickItem = item;
-        this._installKeyboardManualHandlers(item);
+        // The tile's handlers stay installed while the switch is hidden on
+        // the lock screen, so they are only replaced for a new tile.
+        if (this._keyboardQuickItem !== item) {
+            if (this._keyboardQuickItem)
+                this._restoreKeyboardManualHandlers();
+            this._keyboardQuickItem = item;
+            this._installKeyboardManualHandlers(item);
+        }
         this._syncKeyboardToggle();
     }
 

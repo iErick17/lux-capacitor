@@ -435,7 +435,7 @@ test('Turning screen Auto off resets preferences and cancels a pending save', ()
         'pending save survived the reset');
 });
 
-test('Disabling on lock writes a pending screen preference', () => {
+test('Disabling (on logout) writes a pending screen preference', () => {
     const {e, values, sense, drag} = screenFixture();
     Main.sessionMode = {isLocked: true};
     Main.osdWindowManager = {};
@@ -443,6 +443,87 @@ test('Disabling on lock writes a pending screen preference', () => {
     drag(0.7);
     e.disable();
     assert(JSON.parse(values.anchors)[0]?.brightness === 0.7, 'pending preference was lost on lock');
+});
+
+test('Locking hides the Auto switches but keeps brightness control running', () => {
+    const {e, targets, sense} = screenFixture();
+    let destroyed = 0;
+    const keyboardTile = {};
+    Object.assign(e, {
+        _screenQuickItem: {disconnect() {}, menuEnabled: true,
+            _monitorBrightnessSection: {actor: {visible: true}}},
+        _screenAutoMenuItem: {disconnect() {}, destroy() { destroyed++; }},
+        _screenMenuEnabledId: 1, _screenQuickItemDestroyId: 2, _screenAutoMenuItemDestroyId: 3,
+        _screenSectionWasVisible: true,
+        _keyboardAutoMenuItem: {destroy() { destroyed++; }},
+        _keyboardQuickItem: keyboardTile, _menuSetupId: 0,
+    });
+    e._manager.scales = [];
+    Main.sessionMode = {isLocked: true};
+    e._onSessionModeChanged();
+    assert(destroyed === 2 && !e._screenAutoMenuItem && !e._keyboardAutoMenuItem,
+        'an Auto switch stayed visible on the lock screen');
+    assert(e._keyboardQuickItem === keyboardTile, 'the keyboard tile lost its handlers on the lock screen');
+    sense(5);
+    sense(500);
+    assert(targets.length === 2 && targets[1] > targets[0], 'brightness stopped following the light while locked');
+    e._scheduleQuickSettingsMenus();
+    assert(!e._menuSetupId, 'a menu retry re-added the switches while locked');
+    Main.sessionMode = {isLocked: false};
+    let scheduled = 0;
+    e._scheduleQuickSettingsMenus = () => scheduled++;
+    e._onSessionModeChanged();
+    assert(scheduled === 1, 'the switches were not restored after unlocking');
+});
+
+test('A closed lid turns keyboard Auto light off and ignores the darkness under it', () => {
+    const {c, settings, writes} = fixture(true, 30);
+    c.onSensorLevel(0);
+    assert(c._target === 55, 'Auto did not light the keyboard in the dark');
+    c.setLidClosed(true);
+    assert(writes.at(-1) === 0 && c._target === 0 && settings.value, 'closing the lid left the light on or turned Auto off');
+    c._onActualLevel(0);
+    assert(settings.value && writes.join() === '0', 'the off write was mistaken for Fn+Space');
+    c.onSensorLevel(0);
+    assert(c._lux === null && c._target === 0, 'darkness under the closed lid lit the keyboard');
+    c.setLidClosed(false);
+    assert(c._target === 0 && writes.join() === '0', 'opening the lid lit the keyboard before a fresh reading');
+    c.onSensorLevel(0);
+    assert(c._target === 55, 'keyboard Auto did not resume after opening the lid');
+});
+
+test('A closed lid turns a manual keyboard level off and restores it on opening', () => {
+    const {c, settings, writes} = fixture(false, 50);
+    c.setLidClosed(true);
+    c.setLidClosed(false);
+    assert(!settings.value && writes.join() === '0,50', `manual level not restored: ${writes.join()}`);
+});
+
+test('Closing the lid releases the light sensor and opening it resumes screen Auto', () => {
+    const {e, targets, sense} = screenFixture();
+    delete e._sensorDesired;
+    let released = 0;
+    let claimed = 0;
+    e._releaseSensor = () => {
+        released++;
+        e._sensorClaimed = false;
+    };
+    e._claimSensor = () => {
+        claimed++;
+        e._sensorClaimed = true;
+        e._readLux();
+    };
+    sense(300);
+    const upower = {LidIsPresent: true, LidIsClosed: true, OnBattery: false};
+    e._upower = upower;
+    e._onPowerChanged();
+    assert(released === 1 && e._lux === null, 'the sensor stayed claimed under a closed lid');
+    sense(0);
+    assert(targets.length === 1, 'darkness under the closed lid moved the screen');
+    e._sensor.LightLevel = 300;
+    upower.LidIsClosed = false;
+    e._onPowerChanged();
+    assert(claimed === 1 && e._lux === 300 && targets.length === 2, 'screen Auto did not resume after opening the lid');
 });
 
 test('Contradicting preferences stored by earlier versions are cleaned up on load', () => {
